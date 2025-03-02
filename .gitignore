@@ -1,0 +1,6 @@
+.vscode/
+.venv
+__pycache__/
+**/__pycache__/
+/requirements2.txt
+/.env
