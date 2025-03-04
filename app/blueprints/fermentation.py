@@ -37,18 +37,18 @@ def fermentation_calc_data():
       - Fermentation
     parameters:
       - name: mass
-          in: query
-          type: number
-          format: float
-          required: true
-          description: The mass of the feed
-          example: 100.0
-    - name: unit
-      in: query
-      type: string
-      required: true
-      description: The unit of the mass
-      example: 'kghr, tons, tonnes'
+        in: query
+        type: number
+        format: float
+        required: true
+        description: The mass of the feed
+        example: 100.0
+      - name: unit
+        in: query
+        type: string
+        required: true
+        description: The unit of the mass
+        example: 'kghr, tons, tonnes'
     responses:
       200:
         description: A successful response
