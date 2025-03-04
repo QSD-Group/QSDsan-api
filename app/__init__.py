@@ -5,8 +5,8 @@ from flasgger import Swagger # flasgger Version 0.9.7.1, we use this to generate
 
 # We use blueprints from Flask to organize our API into different modules
 # from .blueprints.fermentation import fermentation_bp
-# from .blueprints.htl import htl_bp
-# from .blueprints.combustion import combustion_bp
+from .blueprints.htl import htl_bp
+from .blueprints.combustion import combustion_bp
 # Also loading a trial blueprint to test stuff out
 from .blueprints.trial import trial_bp # Remove this line later
 
@@ -16,8 +16,8 @@ def create_app():
     Swagger(app)
     
     # app.register_blueprint(fermentation_bp, url_prefix='/api/v1')
-    # app.register_blueprint(htl_bp, url_prefix='/api/v1')
-    # app.register_blueprint(combustion_bp, url_prefix='/api/v1')
+    app.register_blueprint(htl_bp, url_prefix='/api/v1')
+    app.register_blueprint(combustion_bp, url_prefix='/api/v1')
     
     # Also loading a trial blueprint to test stuff out
     app.register_blueprint(trial_bp, url_prefix='/api/v1') # Remove this line later
