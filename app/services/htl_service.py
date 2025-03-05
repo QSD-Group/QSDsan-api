@@ -26,7 +26,14 @@ warnings.filterwarnings("ignore") # ignore warnings
 from chaospy import distributions as shape  # chaospy version 4.3.17
 from exposan.htl import create_model # exposan version @ git+https://github.com/QSD-Group/EXPOsan.git@93d4173347019ab0d4d5c325501ea35d3f947439
 
-STATE_DATA = pd.read_csv("app\data\htl\htl_data.csv")
+# for file paths
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH = os.path.join(BASE_DIR, "..", "data", "htl", "htl_data.csv")
+
+
+STATE_DATA = pd.read_csv(CSV_PATH)
 
 def htl_convert_sludge_mass_kg_hr(sludge, unit):
     """

@@ -37,6 +37,9 @@ from biorefineries.cellulosic.streams import cornstover as cornstover_kwargs
 from biorefineries.cornstover import ethanol_density_kggal
 import pandas as pd
 
+# for file paths
+import os
+
 GWP_CFs = {
     'cornstover': 0.2,
     'sulfuric_acid': 1,
@@ -47,7 +50,10 @@ GWP_CFs = {
     'FGD_lime': 1, #!!! need to be clear if this is CaO or Ca(OH)2
     }
 
-STATE_DATA = pd.read_csv(r"app\data\fermentation\fermentation_data.csv")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH = os.path.join(BASE_DIR, "..", "data", "fermentation", "fermentation_data.csv")
+
+STATE_DATA = pd.read_csv(CSV_PATH)
 
 def fermentation_convert_feedstock_kg_hr(feedstock, unit='kghr'):
     """

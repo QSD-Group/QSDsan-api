@@ -23,6 +23,14 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import pandas as pd
+
+# for file paths
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH = os.path.join(BASE_DIR, "..", "data", "combustion", "combustion_data.csv")
+
+STATE_DATA = pd.read_csv(CSV_PATH)
 class BoilerTurbogenerator(bst.facilities.BoilerTurbogenerator):
 
     def _load_utility_agents(self):
@@ -255,8 +263,6 @@ def combustion_calc(mass, waste_type, compositions=COMPOSITIONS, dry_mass=None):
         avoided_emissions_percent # as a percentage of total emissions
     )
         
-STATE_DATA = pd.read_csv(r"app\data\combustion\combustion_data.csv")
-
 def combustion_county(county, waste_type, state_data=STATE_DATA, compositions=COMPOSITIONS):
     """
     Calculates the annual electricity production and avoided emissions from combustion of sludge, food waste, FOG, or green manure in a county.
