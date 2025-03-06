@@ -209,13 +209,13 @@ def combustion_county_data():
         in: query
         type: string
         required: true
-        description: 'The name of the county'
+        description: The name of the county
         example: 'Essex'
       - name: waste_type
         in: query
         type: string
         required: false
-        description: 'The type of waste, defaults to sludge'
+        description: The type of waste, defaults to sludge
         example: 'sludge, food, fog, green, manure'
     responses:
       200:

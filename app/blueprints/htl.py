@@ -31,7 +31,12 @@ htl_bp = Blueprint('htl_bp', __name__)
 def htl_calc_data():
     # URL Format - GET /htl/calc?sludge=sludge&unit=unit
     """
-    Takes in a sludge mass in a specified unit and returns the (i) mass of the sludge in kg/hr, (ii) price of the HTL product in $/gallon, (iii) greenhouse gas emissions in lb CO2e/gallon.    
+    Takes in a sludge mass in a specified unit and returns the 
+    (1) mass of the sludge in kg/hr
+    (2) price of the HTL product in $/gallon
+    (3) greenhouse gas emissions in lb CO2e/gallon.    
+    
+    GET /htl/calc?sludge=sludge&unit=unit
     ---
     tags:
       - HTL
@@ -149,9 +154,15 @@ def htl_calc_data():
     
 @htl_bp.route('/htl/county', methods=['GET'])
 def htl_county_data():
-    # URL Format - GET /htl/county?county_name=county_name
     """
-    Takes in a county name and returns the HTL conversion efficiency for that county.    
+    Takes in a county name and returns
+    (1) the name of the county
+    (2) the mass of the sludge in kg/hr
+    (3) the price of the HTL product in $/gallon
+    (4) the greenhouse gas emissions in lb CO2e/gallon.
+    
+    GET /htl/county?county_name=county_name
+    
     ---
     tags:
       - HTL

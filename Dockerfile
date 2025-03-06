@@ -1,20 +1,23 @@
-# Use the official Python image from the Docker Hub
+# Use the official Python image from Docker Hub
 FROM python:3.10-slim
 
-# Set the working directory in the container
+# Set the working directory inside the container
 WORKDIR /app
 
-# Copy the requirements file into the container
+# Copy the requirements file and install dependencies
 COPY requirements.txt .
-
-# Install the dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code into the container
 COPY . .
 
-# Expose the port the app runs on
+# Set environment variables for Flask
+ENV FLASK_APP=wsgi.py
+ENV FLASK_RUN_HOST=0.0.0.0
+ENV FLASK_RUN_PORT=5000
+
+# Expose the port Flask will run on
 EXPOSE 5000
 
-# Command to run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]
+# Command to start Flask
+CMD ["flask", "run"]

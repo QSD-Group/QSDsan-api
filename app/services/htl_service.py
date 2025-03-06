@@ -24,10 +24,21 @@ warnings.filterwarnings("ignore") # ignore warnings
 # https://h2tools.org/hyarc/calculator-tools/lower-and-higher-heating-values-fuels
 
 from chaospy import distributions as shape  # chaospy version 4.3.17
-from exposan.htl import create_model # exposan version @ git+https://github.com/QSD-Group/EXPOsan.git@93d4173347019ab0d4d5c325501ea35d3f947439
+
+# SMALL exposan check
 
 # for file paths
 import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Define a relative path inside the project
+EXPOSAN_RESULTS_PATH = os.path.join(BASE_DIR, "..", "exposan_results")
+
+if not os.path.exists(EXPOSAN_RESULTS_PATH):
+    os.makedirs(EXPOSAN_RESULTS_PATH, exist_ok=True)
+
+from exposan.htl import create_model # exposan version @ git+https://github.com/QSD-Group/EXPOsan.git@93d4173347019ab0d4d5c325501ea35d3f947439
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CSV_PATH = os.path.join(BASE_DIR, "..", "data", "htl", "htl_data.csv")

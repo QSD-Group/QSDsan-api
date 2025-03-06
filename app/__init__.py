@@ -4,7 +4,7 @@ from flask_cors import CORS # flask-cors Version 5.0.0, we use this to allow cro
 from flasgger import Swagger # flasgger Version 0.9.7.1, we use this to generate swagger documentation for our API
 
 # We use blueprints from Flask to organize our API into different modules
-# from .blueprints.fermentation import fermentation_bp
+from .blueprints.fermentation import fermentation_bp
 from .blueprints.htl import htl_bp
 from .blueprints.combustion import combustion_bp
 # Also loading a trial blueprint to test stuff out
@@ -15,7 +15,7 @@ def create_app():
     CORS(app)
     Swagger(app)
     
-    # app.register_blueprint(fermentation_bp, url_prefix='/api/v1')
+    app.register_blueprint(fermentation_bp, url_prefix='/api/v1')
     app.register_blueprint(htl_bp, url_prefix='/api/v1')
     app.register_blueprint(combustion_bp, url_prefix='/api/v1')
     
