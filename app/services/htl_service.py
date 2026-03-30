@@ -250,13 +250,10 @@ def htl_county(county, state_data=STATE_DATA):
     
     mass_dmt = float(state_data.loc[state_data["County"] == name_final, "County Total (Dry Metric Tonnes/Year)"].values[0])
 
-    # Let's convert dry metric tonnes to kg/hr
-    mass_kg_hr = mass_dmt * 1000 / 24 # 24 hours in a day
-    
-    # Let's get the MSDP and GWP
-    msdp, gwp = htl_calc(mass_kg_hr)
-    
-    return name_final, mass_dmt, msdp, gwp
+    price = float(state_data.loc[state_data["County"] == name_final, "MDSP ($/gal)"].values[0])
+    gwp   = float(state_data.loc[state_data["County"] == name_final, "GWP (lb CO2/gal)"].values[0])
+
+    return name_final, mass_dmt, price, gwp
 
 # Let's write some test cases
 if __name__ == "__main__":

@@ -265,7 +265,7 @@ def combustion_calc(mass, waste_type, compositions=COMPOSITIONS, dry_mass=None):
         case _:
             raise ValueError("waste_type must be one of 'sludge', 'food', 'fog', 'green', or 'manure'")
         
-    annual_electricity, avoided_emissions, avoided_emissions_percent = combustion_calc_raw(mass, list_to_use)
+    annual_electricity, avoided_emissions, avoided_emissions_percent = combustion_calc_raw(mass, list_to_use, dry_mass_in_kg_hr=dry_mass)
     return (
         waste_type, # type of waste - sludge, food, fog, green, manure
         mass, # in kg/hr
@@ -338,48 +338,21 @@ def combustion_county(county, waste_type, state_data=STATE_DATA, compositions=CO
     if name_final is None:
         return None
     
-    dry_mass_kg_hr = None
-    
-    match waste_type:
-        case "sludge":
-            mass = state_data.loc[state_data['County'] == name_final, 'Sludge (MGD)'].values[0] # this is in MGD | Convert from million gallons/day to kg/hr
-            mass_kg_hr = mass * 1e6*3.78541/24 # number from report, MGD to kg/hr
-            
-        case "food":
-            mass = state_data.loc[state_data['County'] == name_final, 'Food (tons)'].values[0] # this is tons | Convert from dry tons/year to kg/hr
-            mass_kg_hr = mass * 907.185 / (24*365) # complete mass is kg/hr
-            
-            dry_mass = state_data.loc[state_data['County'] == name_final, 'Food (dry tons)'].values[0] # this is tons | Convert from dry tons/year to kg/hr
-            dry_mass_kg_hr = dry_mass * 907.185 / (24*365) # this is dry, which is some percentage of the data
-            
-        case "fog":
-            mass = state_data.loc[state_data['County'] == name_final, 'Fog (tons)'].values[0] # this is tons | Convert from dry tons/year to kg/hr
-            mass_kg_hr = mass * 907.185 / (24*365) # this is dry, which is some percentage of the data
-            
-            dry_mass = state_data.loc[state_data['County'] == name_final, 'Fog (dry tons)'].values[0] # this is tons | Convert from dry tons/year to kg/hr
-            dry_mass_kg_hr = dry_mass * 907.185 / (24*365) # this is dry, which is some percentage of the data
+    if waste_type not in ("sludge", "food", "fog", "green", "manure"):
+        raise ValueError("waste_type must be one of 'sludge', 'food', 'fog', 'green', or 'manure'")
 
-        case "green":
-            mass = state_data.loc[state_data['County'] == name_final, 'Green (dry tons)'].values[0] # this is tons | Convert from dry tons/year to kg/hr
-            mass_kg_hr = mass * 907.185 / (24*365) # this is dry, which is some percentage of the data
-            mass_kg_hr = mass_kg_hr / compositions["green"][0] # this is complete green in kg/hr
-
-        case "manure":
-            mass = state_data.loc[state_data['County'] == name_final, 'Manure (lbs)'].values[0] # this is lbs | Convert from lbs/year to kg/hr
-            mass_kg_hr = mass * 0.453592 / (24*365) # this is dry, which is some percentage of the data
-            mass_kg_hr = mass_kg_hr / compositions["manure"][0] # this is complete manure in kg/hr
-
-        case _:
-            raise ValueError("waste_type must be one of 'sludge', 'food', 'fog', 'green', or 'manure'")
-        
-    waste_type, mass, annual_electricity, avoided_emissions, avoided_emissions_percent = combustion_calc(mass_kg_hr, waste_type, dry_mass=dry_mass_kg_hr) 
+    col = waste_type.capitalize()
+    mass              = float(state_data.loc[state_data['County'] == name_final, f'{col} Mass kg/hr'].values[0])
+    annual_electricity = float(state_data.loc[state_data['County'] == name_final, f'{col} Electricity (MWH)'].values[0])
+    avoided_emissions  = float(state_data.loc[state_data['County'] == name_final, f'{col} Avoided Emissions (million metric tonnes)'].values[0])
+    avoided_emissions_percent = float(state_data.loc[state_data['County'] == name_final, f'{col} Avoided Emissions Percentage'].values[0])
 
     return (
-        name_final, # County name
-        waste_type, # type of waste - sludge, food, fog, green, manure
-        mass, # in kg/hr
-        annual_electricity, # in MWh
-        avoided_emissions, # in million metric tonnes
+        name_final,               # County name
+        waste_type,               # type of waste - sludge, food, fog, green, manure
+        mass,                     # in kg/hr
+        annual_electricity,       # in MWh
+        avoided_emissions,        # in million metric tonnes
         avoided_emissions_percent # as a percentage of total emissions
     )
     

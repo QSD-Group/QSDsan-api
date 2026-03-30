@@ -270,15 +270,10 @@ def fermentation_county(name, state_data=STATE_DATA):
     except ValueError:
         raise ValueError(f"Value in 'Lignocellulose (dry tons)' for county '{name_final}' cannot be converted to an integer.")
     
-    try:
-        kg_per_hr = state_data.loc[state_data['County'] == name_final, 'Kilogram/hr'].values[0]
-    except KeyError:
-        raise KeyError("Column 'Kilogram/hr' not found in the dataset.")
-    except IndexError:
-        raise ValueError(f"Value for 'Kilogram/hr' not found for county '{name_final}'.")
+    ethanol = float(state_data.loc[state_data['County'] == name_final, 'Annual Ethanol (gal/yr)'].values[0])
+    price   = float(state_data.loc[state_data['County'] == name_final, 'Price ($/gal)'].values[0])
+    gwp     = float(state_data.loc[state_data['County'] == name_final, 'GWP (kg CO2e/gal)'].values[0])
 
-    ethanol, price, gwp = fermentation_calc(kg_per_hr)
-    
     return name_final, dry_tonnes, ethanol, price, gwp
     
 if __name__ == '__main__':
