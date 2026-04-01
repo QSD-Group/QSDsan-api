@@ -10,13 +10,14 @@ Migration Status: Phase 1 - Foundation & HTL
 - Adds automatic OpenAPI documentation generation
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 import uvicorn
 
 # Import routers 
-from app.routers import htl, combustion, fermentation, health, v2_example
+from app.routers import htl, combustion, fermentation, health
 
 # Import middleware
 from app.middleware import (
@@ -59,9 +60,6 @@ app.include_router(fermentation.router, prefix="/api/v1", tags=["Fermentation"])
 # Register health monitoring endpoints (no API version prefix for standard health endpoints)
 app.include_router(health.router, tags=["Health"])
 
-# Register API v2 example endpoints (demonstrates versioning)
-app.include_router(v2_example.router, prefix="/api/v2", tags=["API v2"])
-
 @app.get("/", tags=["Root"])
 async def root():
     """Root endpoint with API information"""
@@ -70,10 +68,8 @@ async def root():
         "version": "2.0.0",
         "docs": "/docs",
         "health": "/health",
-        "api_versions": {
-            "v1": "/api/v1",
-            "v2": "/api/v2"
-        },
+        "api_version": "v1",
+        "base_url": "/api/v1",
         "endpoints": {
             "htl": "/api/v1/htl/",
             "combustion": "/api/v1/combustion/",
@@ -88,11 +84,36 @@ async def root():
     }
 
 # Error handlers
-@app.exception_handler(404)
-async def not_found_handler(request, exc):
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc: RequestValidationError):
+    messages = []
+    for error in exc.errors():
+        field = error["loc"][-1] if error["loc"] else "field"
+        input_val = error.get("input", "")
+        error_type = error.get("type", "")
+
+        if error_type == "missing":
+            messages.append(f"Missing required parameter: '{field}'")
+        elif error_type == "enum":
+            expected = error.get("ctx", {}).get("expected", "")
+            messages.append(f"Invalid {field} '{input_val}'. Valid options: {expected}")
+        elif error_type in ("greater_than", "greater_than_equal"):
+            messages.append(f"'{field}' must be a positive number (got {input_val})")
+        elif error_type in ("float_parsing", "int_parsing"):
+            messages.append(f"'{field}' must be a number (got '{input_val}')")
+        else:
+            messages.append(f"Invalid '{field}': {error.get('msg', error_type)}")
+
     return JSONResponse(
-        status_code=404,
-        content={"error": "Endpoint not found"}
+        status_code=422,
+        content={"error": messages[0] if len(messages) == 1 else messages}
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail}
     )
 
 @app.exception_handler(500)

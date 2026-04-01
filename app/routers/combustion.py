@@ -184,7 +184,7 @@ async def combustion_county_data(
         if result is None:
             raise HTTPException(
                 status_code=404,
-                detail="County not found"
+                detail=f"County '{county_name}' not found. Valid counties are the 21 NJ counties (e.g. Essex, Atlantic, Bergen)."
             )
         
         # Unpack the results - matches Flask blueprint return format

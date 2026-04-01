@@ -1,6 +1,6 @@
 # Multi-stage Docker build for FastAPI with UV
 # Builder stage - compile dependencies
-FROM python:3.10-slim as builder
+FROM python:3.10-slim AS builder
 
 # Install system dependencies needed for compilation
 RUN apt-get update && apt-get install -y gcc g++ gfortran git
@@ -18,7 +18,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-cache
 
 # Runtime stage - minimal footprint
-FROM python:3.10-slim as runtime
+FROM python:3.10-slim AS runtime
 
 # Install only runtime dependencies
 RUN apt-get update && apt-get install -y libopenblas0 liblapack3 && rm -rf /var/lib/apt/lists/*

@@ -150,7 +150,7 @@ async def htl_county_data(
     except ValueError:
         raise HTTPException(
             status_code=404,
-            detail="County not found"
+            detail=f"County '{county_name}' not found. Valid counties are the 21 NJ counties (e.g. Essex, Atlantic, Bergen)."
         )
     except TypeError as e:
         raise HTTPException(

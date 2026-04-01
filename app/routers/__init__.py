@@ -13,6 +13,6 @@ Available routers:
 """
 
 # Import routers for easy access
-from . import htl, combustion, fermentation, health, v2_example
+from . import htl, combustion, fermentation, health
 
-__all__ = ["htl", "combustion", "fermentation", "health", "v2_example"]
+__all__ = ["htl", "combustion", "fermentation", "health"]
