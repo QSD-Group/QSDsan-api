@@ -72,7 +72,7 @@ docker run -p 5000:5000 waste-energy-api
 
 ## Remaining work
 
-- **CORS**: Change `allow_origins=["*"]` in `app/main.py` to the actual frontend domain before public deployment
+- **CORS**: `allow_origins` is env-driven via `ALLOWED_ORIGINS` (comma-separated), defined in `app/main.py`. It defaults to the known frontend origins (`nj-bioenergy.apps.qsdsan.com`, `qsdsan.app`, localhost) and is default-closed — unknown origins are blocked. Override `ALLOWED_ORIGINS` in production to change the list; drop `qsdsan.app` after cutover to the new domain.
 - **Config**: Rate limit values and other settings are hardcoded in `app/main.py` — extract to env vars / `config.py` if needed
 - **Rate limiting**: Current implementation is in-process (resets on restart, not shared across multiple containers). Replace with Redis-backed limiting if horizontal scaling is needed
 - **`/calc` latency**: Live scientific simulations take seconds. Acceptable for research use; add async task queue (Celery/ARQ) if low-latency is ever required

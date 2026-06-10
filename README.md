@@ -1,6 +1,11 @@
 
 # API Backend for Waste-to-Energy Processing
 
+> **This repository is the backend API** (`nj-bioenergy-api`) for the NJ Bioenergy
+> Calculator — the FastAPI service that the frontend
+> [`nj-bioenergy-app`](https://github.com/QSD-Group/nj-bioenergy-app) calls. Live at
+> https://api.qsdsan.app.
+
 This repository contains the backend for a Waste-to-Energy processing application. The backend is built using Flask and provides multiple API endpoints for different waste processing methods such as **Fermentation**, **HTL (Hydrothermal Liquefaction)**, **Combustion**, and **Anaerobic Digestion**.
 
 ## Table of Contents

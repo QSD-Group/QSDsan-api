@@ -10,6 +10,8 @@ Migration Status: Phase 1 - Foundation & HTL
 - Adds automatic OpenAPI documentation generation
 """
 
+import os
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -43,10 +45,23 @@ app.add_middleware(PerformanceMiddleware, slow_request_threshold=0.5)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=30, requests_per_hour=500)
 app.add_middleware(SecurityHeadersMiddleware)
 
-# Configure CORS (same as Flask-CORS settings)
+# Configure CORS — env-driven allowlist, default-closed to the known frontends.
+# Set ALLOWED_ORIGINS (comma-separated) in production to override the default.
+# NOTE: "*" + allow_credentials=True is rejected by browsers, so origins are explicit.
+_DEFAULT_ALLOWED_ORIGINS = (
+    "https://nj-bioenergy.apps.qsdsan.com,"  # new group-owned frontend
+    "https://qsdsan.app,"                    # current live frontend (drop after cutover)
+    "http://localhost:8000,http://localhost:3000"  # local dev
+)
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", _DEFAULT_ALLOWED_ORIGINS).split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
