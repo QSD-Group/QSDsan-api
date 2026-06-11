@@ -49,8 +49,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 # Set ALLOWED_ORIGINS (comma-separated) in production to override the default.
 # NOTE: "*" + allow_credentials=True is rejected by browsers, so origins are explicit.
 _DEFAULT_ALLOWED_ORIGINS = (
-    "https://nj-bioenergy.apps.qsdsan.com,"  # new group-owned frontend
-    "https://qsdsan.app,"                    # current live frontend (drop after cutover)
+    "https://nj-bioenergy.apps.qsdsan.com,"  # group-owned frontend
     "http://localhost:8000,http://localhost:3000"  # local dev
 )
 ALLOWED_ORIGINS = [

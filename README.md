@@ -4,9 +4,18 @@
 > **This repository is the backend API** (`nj-bioenergy-api`) for the NJ Bioenergy
 > Calculator — the FastAPI service that the frontend
 > [`nj-bioenergy-app`](https://github.com/QSD-Group/nj-bioenergy-app) calls. Live at
-> https://api.qsdsan.app.
+> https://nj-bioenergy-api.apps.qsdsan.com.
 
 This repository contains the backend for a Waste-to-Energy processing application. The backend is built using Flask and provides multiple API endpoints for different waste processing methods such as **Fermentation**, **HTL (Hydrothermal Liquefaction)**, **Combustion**, and **Anaerobic Digestion**.
+
+## Deployment (production)
+
+Live at **https://nj-bioenergy-api.apps.qsdsan.com**, hosted on **Amazon ECS Express Mode** in the QSD-Group `qsdsan-app` AWS account (region `us-east-2`). The container image is built and pushed to ECR by the GitHub Actions workflow `.github/workflows/build-and-push-ecr.yml` (GitHub OIDC → IAM role `github-actions-ecr-push`; no stored keys). Express Mode runs that image behind an auto-provisioned Application Load Balancer (ALB).
+
+**Custom domain wiring (manual, on the ALB):** an ACM certificate for the domain is attached to the ALB's **HTTPS:443 listener** (SNI, alongside the default `*.on.aws` cert); a **host-header listener rule** routes `nj-bioenergy-api.apps.qsdsan.com` to the service's target group; and DNS is a **CNAME → the ALB** in the `qsdsan.com` zone (Porkbun). Note the domain is a **sibling** of the frontend (`nj-bioenergy-api.apps.qsdsan.com`), not nested under it — a name *under* `nj-bioenergy.apps.qsdsan.com` can't resolve because that name is a CNAME.
+
+> ⚠️ **Watch-item — the host-header rule lives on an ALB that ECS Express Mode manages.** A future Express **redeploy could reset the listener rules** and make the custom domain return **404** (the `*.on.aws` endpoint would keep working). If the domain 404s after a deploy, re-add the rule:
+> EC2 → Load Balancers → the Express ALB → **HTTPS:443** listener → add rule: **Host header** `nj-bioenergy-api.apps.qsdsan.com` → **forward to** the service's target group.
 
 ## Table of Contents
 - [Project Structure](#project-structure)
