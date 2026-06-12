@@ -12,10 +12,9 @@ This repository contains the backend for a Waste-to-Energy processing applicatio
 
 Live at **https://nj-bioenergy-api.apps.qsdsan.com**, hosted on **Amazon ECS Express Mode** in the QSD-Group `qsdsan-app` AWS account (region `us-east-2`). The container image is built and pushed to ECR by the GitHub Actions workflow `.github/workflows/build-and-push-ecr.yml` (GitHub OIDC → IAM role `github-actions-ecr-push`; no stored keys). Express Mode runs that image behind an auto-provisioned Application Load Balancer (ALB).
 
-**Custom domain wiring (manual, on the ALB):** an ACM certificate for the domain is attached to the ALB's **HTTPS:443 listener** (SNI, alongside the default `*.on.aws` cert); a **host-header listener rule** routes `nj-bioenergy-api.apps.qsdsan.com` to the service's target group; and DNS is a **CNAME → the ALB** in the `qsdsan.com` zone (Porkbun). Note the domain is a **sibling** of the frontend (`nj-bioenergy-api.apps.qsdsan.com`), not nested under it — a name *under* `nj-bioenergy.apps.qsdsan.com` can't resolve because that name is a CNAME.
+**Custom domain wiring:** a **CloudFront distribution** (`d3t3sqyyjalry1.cloudfront.net`) sits in front of the ECS Express `.on.aws` endpoint. DNS is a **CNAME `nj-bioenergy-api.apps` → `d3t3sqyyjalry1.cloudfront.net`** in the `qsdsan.com` zone (Porkbun). CloudFront uses an ACM cert (us-east-1) for the alternate domain and forwards all requests to the `.on.aws` origin with cache policy `CachingDisabled` and origin request policy `AllViewerExceptHostHeader`. Note the domain is a **sibling** of the frontend (`nj-bioenergy-api.apps.qsdsan.com`), not nested under it — a name *under* `nj-bioenergy.apps.qsdsan.com` can't resolve because that name is a CNAME.
 
-> ⚠️ **Watch-item — the host-header rule lives on an ALB that ECS Express Mode manages.** A future Express **redeploy could reset the listener rules** and make the custom domain return **404** (the `*.on.aws` endpoint would keep working). If the domain 404s after a deploy, re-add the rule:
-> EC2 → Load Balancers → the Express ALB → **HTTPS:443** listener → add rule: **Host header** `nj-bioenergy-api.apps.qsdsan.com` → **forward to** the service's target group.
+The CloudFront layer eliminates the previous ALB target-group rotation fragility — the `.on.aws` origin is always healthy regardless of Express blue/green deploys. Do **not** delete the ALB; it is the CloudFront origin.
 
 ## Table of Contents
 - [Project Structure](#project-structure)
