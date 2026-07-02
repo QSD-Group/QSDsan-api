@@ -8,14 +8,17 @@ name: Build, smoke-test, and push Lambda image to ECR
 # push-triggered pipeline like build-and-push-ecr.yml.
 #
 # Runs on GitHub's hosted runner (which already has Docker) instead of
-# requiring a local Docker install, and smoke-tests the image two ways
-# before ever pushing to ECR:
-#   1. Plain app boot check - confirms uvicorn/FastAPI actually starts
-#      and answers requests (catches import errors, the /tmp path fix,
-#      etc).
-#   2. Lambda Runtime Interface Emulator check - confirms the AWS Lambda
-#      Web Adapter correctly proxies a Lambda-invocation-shaped request
-#      to the app, which the plain check above doesn't exercise.
+# requiring a local Docker install, and smoke-tests the image (plain app
+# boot check - confirms uvicorn/FastAPI actually starts and answers
+# requests) before ever pushing to ECR.
+#
+# This does NOT validate the AWS Lambda Web Adapter's extension-proxy
+# behavior: the standalone Lambda Runtime Interface Emulator does not
+# support Lambda Extensions (confirmed - the adapter panics with
+# "extension registration failure" / "State transition is not allowed"
+# when run through RIE), so that path can only be exercised on real
+# Lambda. That's exactly what the AWS runbook's Task 4 Step 4 (console
+# test event) and Task 5 Step 2 (direct Function URL curl) are for.
 
 on:
   workflow_dispatch: {}
@@ -39,7 +42,7 @@ jobs:
       - name: Build Lambda image
         run: docker build -f Dockerfile.lambda -t "$IMAGE_TAG" .
 
-      - name: Smoke test 1 - plain app boot check
+      - name: Smoke test - plain app boot check
         run: |
           docker run -d --rm -p 5000:5000 --name lambda-smoketest-app "$IMAGE_TAG"
 
@@ -69,39 +72,6 @@ jobs:
           fi
 
           docker stop lambda-smoketest-app
-
-      - name: Smoke test 2 - Lambda Runtime Interface Emulator check
-        run: |
-          mkdir -p /tmp/aws-lambda-rie
-          curl -Lo /tmp/aws-lambda-rie/aws-lambda-rie \
-            https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie
-          chmod +x /tmp/aws-lambda-rie/aws-lambda-rie
-
-          docker run -d --rm -p 9000:8080 \
-            -v /tmp/aws-lambda-rie:/aws-lambda \
-            --entrypoint /aws-lambda/aws-lambda-rie \
-            --name lambda-smoketest-rie \
-            "$IMAGE_TAG" /opt/extensions/lambda-adapter
-
-          echo "Waiting for the RIE endpoint to come up..."
-          up=""
-          for i in $(seq 1 30); do
-            if curl -sf -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" \
-                 -d '{"version":"2.0","routeKey":"$default","rawPath":"/health","requestContext":{"http":{"method":"GET","path":"/health"}},"headers":{}}' \
-                 > /tmp/rie_response.json; then
-              up="1"
-              break
-            fi
-            sleep 10
-          done
-          cat /tmp/rie_response.json || true
-          if [ -z "$up" ] || ! grep -q '"statusCode":200' /tmp/rie_response.json; then
-            echo "RIE invocation did not return statusCode 200"
-            docker logs lambda-smoketest-rie
-            exit 1
-          fi
-
-          docker stop lambda-smoketest-rie
 
       - name: Configure AWS credentials (OIDC, no stored keys)
         uses: aws-actions/configure-aws-credentials@v4

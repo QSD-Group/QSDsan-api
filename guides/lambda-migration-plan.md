@@ -25,7 +25,7 @@
 - Modify: `app/services/htl_service.py` — delete the dead `EXPOSAN_RESULTS_PATH` block (defined, `os.makedirs`'d at import time, then never read anywhere in the repo). Under Lambda, that unconditional `os.makedirs` outside `/tmp` would throw `OSError: Read-only file system` during the cold-start import and crash the function before it could serve a single request — deleting it removes the crash without needing to preserve a value nothing consumes.
 - Modify: `app/services/combustion_service.py` — same deletion; same dead-code shape.
 - Create: `Dockerfile.lambda` — Lambda container-image variant of the existing `Dockerfile` (same builder stage; runtime stage adds the Lambda Web Adapter extension and points every scientific-library cache directory at `/tmp`, since numba/matplotlib/etc. can still try to write to a home-directory cache on import even after the dead-code deletion above).
-- Create: `.github/workflows/build-and-push-lambda.yml` — manual-dispatch-only CI workflow that builds `Dockerfile.lambda`, smoke-tests it two ways (plain app boot check, then a Lambda Runtime Interface Emulator check of the adapter path) on GitHub's hosted runner in place of a local Docker install, pushes it to the existing ECR repo under a `lambda-*` tag only if both checks pass, and (once the function exists, added in Task 6) updates the Lambda function's code.
+- Create: `.github/workflows/build-and-push-lambda.yml` — manual-dispatch-only CI workflow that builds `Dockerfile.lambda`, smoke-tests it (plain app boot check) on GitHub's hosted runner in place of a local Docker install, pushes it to the existing ECR repo under a `lambda-*` tag only if that check passes, and (once the function exists, added in Task 6) updates the Lambda function's code. Does not attempt to validate the Lambda Web Adapter's extension-proxy path — the standalone Runtime Interface Emulator doesn't support Lambda Extensions, so that's only testable on real Lambda (Task 4/5).
 
 ---
 
@@ -186,7 +186,9 @@ git commit -m "Add Lambda container-image variant of the backend Dockerfile"
 
 ### Task 3: CI workflow — build, smoke-test, and push the Lambda image
 
-No local Docker install available (neither the assistant's environment nor the user's machine has it), so this task moves what would otherwise be a local smoke test into GitHub Actions, which already has Docker on its hosted runners. Nothing is pushed to ECR unless both smoke-test steps pass first.
+No local Docker install available (neither the assistant's environment nor the user's machine has it), so this task moves what would otherwise be a local smoke test into GitHub Actions, which already has Docker on its hosted runners. Nothing is pushed to ECR unless the smoke test passes first.
+
+An earlier version of this workflow also ran a second smoke test through the standalone AWS Lambda Runtime Interface Emulator (RIE) to validate the Lambda Web Adapter's request-proxying path. That was removed after a real run failed with `extension registration failure` / `State transition is not allowed` — **the standalone RIE does not support Lambda Extensions**, and the Web Adapter is deployed as an extension, so there is no way to exercise that path outside of real Lambda. That validation happens instead in the AWS runbook (Task 4 Step 4's console test event, Task 5 Step 2's direct Function URL curl) — the only environment that actually runs the extension-launching logic.
 
 **Files:**
 - Create: `.github/workflows/build-and-push-lambda.yml`
@@ -207,13 +209,17 @@ name: Build, smoke-test, and push Lambda image to ECR
 # push-triggered pipeline like build-and-push-ecr.yml.
 #
 # Runs on GitHub's hosted runner (which already has Docker) instead of
-# requiring a local Docker install, and smoke-tests the image two ways
-# before ever pushing to ECR:
-#   1. Plain app boot check - confirms uvicorn/FastAPI actually starts
-#      and answers requests (catches import errors, etc).
-#   2. Lambda Runtime Interface Emulator check - confirms the AWS Lambda
-#      Web Adapter correctly proxies a Lambda-invocation-shaped request
-#      to the app, which the plain check above doesn't exercise.
+# requiring a local Docker install, and smoke-tests the image (plain app
+# boot check - confirms uvicorn/FastAPI actually starts and answers
+# requests) before ever pushing to ECR.
+#
+# This does NOT validate the AWS Lambda Web Adapter's extension-proxy
+# behavior: the standalone Lambda Runtime Interface Emulator does not
+# support Lambda Extensions (confirmed - the adapter panics with
+# "extension registration failure" / "State transition is not allowed"
+# when run through RIE), so that path can only be exercised on real
+# Lambda. That's exactly what the AWS runbook's Task 4 Step 4 (console
+# test event) and Task 5 Step 2 (direct Function URL curl) are for.
 
 on:
   workflow_dispatch: {}
@@ -237,7 +243,7 @@ jobs:
       - name: Build Lambda image
         run: docker build -f Dockerfile.lambda -t "$IMAGE_TAG" .
 
-      - name: Smoke test 1 - plain app boot check
+      - name: Smoke test - plain app boot check
         run: |
           docker run -d --rm -p 5000:5000 --name lambda-smoketest-app "$IMAGE_TAG"
 
@@ -267,39 +273,6 @@ jobs:
           fi
 
           docker stop lambda-smoketest-app
-
-      - name: Smoke test 2 - Lambda Runtime Interface Emulator check
-        run: |
-          mkdir -p /tmp/aws-lambda-rie
-          curl -Lo /tmp/aws-lambda-rie/aws-lambda-rie \
-            https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie
-          chmod +x /tmp/aws-lambda-rie/aws-lambda-rie
-
-          docker run -d --rm -p 9000:8080 \
-            -v /tmp/aws-lambda-rie:/aws-lambda \
-            --entrypoint /aws-lambda/aws-lambda-rie \
-            --name lambda-smoketest-rie \
-            "$IMAGE_TAG" /opt/extensions/lambda-adapter
-
-          echo "Waiting for the RIE endpoint to come up..."
-          up=""
-          for i in $(seq 1 30); do
-            if curl -sf -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" \
-                 -d '{"version":"2.0","routeKey":"$default","rawPath":"/health","requestContext":{"http":{"method":"GET","path":"/health"}},"headers":{}}' \
-                 > /tmp/rie_response.json; then
-              up="1"
-              break
-            fi
-            sleep 10
-          done
-          cat /tmp/rie_response.json || true
-          if [ -z "$up" ] || ! grep -q '"statusCode":200' /tmp/rie_response.json; then
-            echo "RIE invocation did not return statusCode 200"
-            docker logs lambda-smoketest-rie
-            exit 1
-          fi
-
-          docker stop lambda-smoketest-rie
 
       - name: Configure AWS credentials (OIDC, no stored keys)
         uses: aws-actions/configure-aws-credentials@v4
@@ -335,7 +308,7 @@ git push
 
 In GitHub: Actions tab → "Build, smoke-test, and push Lambda image to ECR" → Run workflow → select the `main` branch.
 
-Expected: green run through both smoke-test steps (check the "Checking a real HTL calculation..." log line for the actual cold-start duration — **note it**, since it directly informs the Lambda memory/timeout starting values in Task 4); then, in the AWS console (or CLI, after switch-role into `qsdsan-app`):
+Expected: green run (check the "Checking a real HTL calculation..." log line for the actual cold-start duration — **note it**, since it directly informs the Lambda memory/timeout starting values in Task 4); then, in the AWS console (or CLI, after switch-role into `qsdsan-app`):
 
 ```bash
 aws ecr describe-images --repository-name nj-bioenergy-api --region us-east-2 \
@@ -409,7 +382,7 @@ curl -s "https://<function-url-id>.lambda-url.us-east-2.on.aws/health"
 curl -s "https://<function-url-id>.lambda-url.us-east-2.on.aws/api/v1/htl/calc?sludge=150"
 ```
 
-Expected: same responses as the CI smoke tests in Task 3. Time the second call — this is your first real signal for whether the Task 4 Step 3 memory/timeout values need adjusting before this goes anywhere near the custom domain.
+Expected: same responses as the CI smoke test in Task 3 (this is also the first time the Lambda Web Adapter's extension-proxy path gets exercised at all — see Task 3's note on why that couldn't be validated in CI). Time the second call — this is your first real signal for whether the Task 4 Step 3 memory/timeout values need adjusting before this goes anywhere near the custom domain.
 
 ---
 
