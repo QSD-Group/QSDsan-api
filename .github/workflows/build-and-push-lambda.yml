@@ -1,0 +1,125 @@
+name: Build, smoke-test, and push Lambda image to ECR
+
+# Manual-dispatch only, on purpose: the Lambda function doesn't exist yet
+# (it's created by hand per the migration runbook in
+# guides/lambda-migration-plan.md), and this shouldn't run automatically
+# on every push to main until the Lambda path has been cut over to in
+# production. Once that's done, this can be folded into the normal
+# push-triggered pipeline like build-and-push-ecr.yml.
+#
+# Runs on GitHub's hosted runner (which already has Docker) instead of
+# requiring a local Docker install, and smoke-tests the image two ways
+# before ever pushing to ECR:
+#   1. Plain app boot check - confirms uvicorn/FastAPI actually starts
+#      and answers requests (catches import errors, the /tmp path fix,
+#      etc).
+#   2. Lambda Runtime Interface Emulator check - confirms the AWS Lambda
+#      Web Adapter correctly proxies a Lambda-invocation-shaped request
+#      to the app, which the plain check above doesn't exercise.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-2
+  ECR_REPOSITORY: nj-bioenergy-api
+  IMAGE_TAG: nj-bioenergy-api:lambda-smoketest
+
+jobs:
+  build-smoketest-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Build Lambda image
+        run: docker build -f Dockerfile.lambda -t "$IMAGE_TAG" .
+
+      - name: Smoke test 1 - plain app boot check
+        run: |
+          docker run -d --rm -p 5000:5000 --name lambda-smoketest-app "$IMAGE_TAG"
+
+          echo "Waiting for /health to respond..."
+          healthy=""
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5000/health > /dev/null; then
+              healthy="1"
+              echo "Healthy after $((i * 10))s"
+              break
+            fi
+            sleep 10
+          done
+          if [ -z "$healthy" ]; then
+            echo "App never became healthy within 600s"
+            docker logs lambda-smoketest-app
+            exit 1
+          fi
+
+          echo "Checking a real HTL calculation..."
+          http_code=$(curl -s -o /tmp/htl_response.json -w "%{http_code}" "http://localhost:5000/api/v1/htl/calc?kg_hr=150")
+          cat /tmp/htl_response.json
+          if [ "$http_code" != "200" ]; then
+            echo "HTL calc endpoint returned $http_code"
+            docker logs lambda-smoketest-app
+            exit 1
+          fi
+
+          docker stop lambda-smoketest-app
+
+      - name: Smoke test 2 - Lambda Runtime Interface Emulator check
+        run: |
+          mkdir -p /tmp/aws-lambda-rie
+          curl -Lo /tmp/aws-lambda-rie/aws-lambda-rie \
+            https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie
+          chmod +x /tmp/aws-lambda-rie/aws-lambda-rie
+
+          docker run -d --rm -p 9000:8080 \
+            -v /tmp/aws-lambda-rie:/aws-lambda \
+            --entrypoint /aws-lambda/aws-lambda-rie \
+            --name lambda-smoketest-rie \
+            "$IMAGE_TAG" /opt/extensions/lambda-adapter
+
+          echo "Waiting for the RIE endpoint to come up..."
+          up=""
+          for i in $(seq 1 30); do
+            if curl -sf -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" \
+                 -d '{"version":"2.0","routeKey":"$default","rawPath":"/health","requestContext":{"http":{"method":"GET","path":"/health"}},"headers":{}}' \
+                 > /tmp/rie_response.json; then
+              up="1"
+              break
+            fi
+            sleep 10
+          done
+          cat /tmp/rie_response.json || true
+          if [ -z "$up" ] || ! grep -q '"statusCode":200' /tmp/rie_response.json; then
+            echo "RIE invocation did not return statusCode 200"
+            docker logs lambda-smoketest-rie
+            exit 1
+          fi
+
+          docker stop lambda-smoketest-rie
+
+      - name: Configure AWS credentials (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GHA_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag and push Lambda image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          IMAGE="$REGISTRY/$ECR_REPOSITORY"
+          docker tag "$IMAGE_TAG" "$IMAGE:lambda-${{ github.sha }}"
+          docker tag "$IMAGE_TAG" "$IMAGE:lambda-latest"
+          docker push "$IMAGE:lambda-${{ github.sha }}"
+          docker push "$IMAGE:lambda-latest"
+          echo "Pushed $IMAGE:lambda-latest and :lambda-${{ github.sha }}"

@@ -19,14 +19,6 @@ import biosteam as bst
 # for file paths
 import os
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Define a relative path inside the project
-EXPOSAN_RESULTS_PATH = os.path.join(BASE_DIR, "..", "exposan_results")
-
-if not os.path.exists(EXPOSAN_RESULTS_PATH):
-    os.makedirs(EXPOSAN_RESULTS_PATH, exist_ok=True)
-
 from exposan import htl
 from biorefineries.cane import create_sugarcane_chemicals
 from biorefineries.tea import create_cellulosic_ethanol_tea
