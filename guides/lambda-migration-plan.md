@@ -350,11 +350,13 @@ Console: Lambda → Create function → "Container image" → function name `nj-
 - [ ] **Step 3: Set memory, timeout, and ephemeral storage**
 
 Configuration → General configuration → Edit:
-- Memory: start at **3008 MB** (Lambda allocates CPU proportional to memory; this targets roughly 1.7 vCPU-equivalent, since the CloudWatch data pulled from the current ECS task shows real requests saturate a full 1 vCPU almost to 100% — under-provisioning memory here would make cold requests even slower, not just cheaper).
-- Timeout: start at **60 seconds**. Revisit based on the cold-start duration you observed in Task 3, Step 3's CI logs — if a cold `htl/calc` request took close to 60s there, raise this (Function URLs support up to 900s, unlike API Gateway).
+- Memory: start at **3008 MB** (Lambda allocates CPU proportional to memory; this targets roughly 1.7 vCPU-equivalent, since the CloudWatch data pulled from the current ECS task shows real requests saturate a full 1 vCPU almost to 100% — under-provisioning memory here would make cold requests even slower, not just cheaper). **Do not lower this based on a `/health`-only test showing low `Max Memory Used`** — see the note below.
+- Timeout: start at **120 seconds**, not 60. A real cold-start `/health` test (see note below) showed Lambda's Init phase alone can eat ~36s in the worst case, before any actual HTL computation runs on top of it. Function URLs support up to 900s, so there's no cost to leaving headroom here.
 - Ephemeral storage (`/tmp`): raise from the 512 MB default to **1024 MB** (numba JIT cache lands in `/tmp` now).
 
-Expected: saved without error; note the actual cold-start duration from the first test invocation in Task 5 and come back to tune memory/timeout if needed — these are starting points, not final values.
+Expected: saved without error; note the actual cold-start duration from the first `sludge=150` test invocation and come back to tune memory/timeout again if needed — these are starting points, not final values.
+
+**Note (added after a real Step 4 test invocation):** the first cold-start attempt hit `INIT_REPORT ... Phase: init Status: timeout` — Lambda enforces roughly a **10-second cap on the Init phase itself**, separate from the function's configured Timeout. Importing thermosteam/biosteam/qsdsan/exposan didn't finish in that first 10s window, so Lambda killed it and automatically retried with a fresh sandbox; the retry succeeded with its own `REPORT` line showing ~25.9s. Net: a real caller hitting a cold function here can see ~10s (failed) + ~26s (successful retry) ≈ 36s of latency for one request, using only 833 MB (well under 3008 MB) — this is evidence the bottleneck is import speed/CPU, not memory, which is why memory should not be reduced based on this reading, and why the timeout above was raised from the original 60s starting point.
 
 - [ ] **Step 4: Smoke-test the function directly (bypassing everything else)**
 
@@ -377,6 +379,31 @@ Console: Lambda function → Test tab → create a test event using the "apigw-r
 
 Expected: `"statusCode": 200` with a body matching the `/health` response. If it errors, check CloudWatch Logs for the function (Lambda auto-creates a log group `/aws/lambda/nj-bioenergy-api`) before proceeding.
 
+- [ ] **Step 5: Smoke-test a real HTL calculation, not just `/health`**
+
+Same Test tab, new test event (name it e.g. `htl-calc-test`), payload:
+
+```json
+{
+  "version": "2.0",
+  "routeKey": "$default",
+  "rawPath": "/api/v1/htl/calc",
+  "rawQueryString": "sludge=150",
+  "queryStringParameters": {
+    "sludge": "150"
+  },
+  "requestContext": {
+    "http": {
+      "method": "GET",
+      "path": "/api/v1/htl/calc"
+    }
+  },
+  "headers": {}
+}
+```
+
+Expected: `"statusCode": 200` with a body containing the calculated MDSP/GWP fields. This is the first test that actually exercises `create_model()` + `metrics_at_baseline()` — the real CPU-heavy path — rather than just the import. Note the `Duration` and `Max Memory Used` from this report line; that's the number that should actually inform whether memory/timeout need further tuning, not the `/health`-only reading above.
+
 ---
 
 ### Task 5 (AWS runbook — human-executed): Function URL
@@ -396,7 +423,7 @@ curl -s "https://<function-url-id>.lambda-url.us-east-2.on.aws/health"
 curl -s "https://<function-url-id>.lambda-url.us-east-2.on.aws/api/v1/htl/calc?sludge=150"
 ```
 
-Expected: same responses as the CI smoke test in Task 3 (this is also the first time the Lambda Web Adapter's extension-proxy path gets exercised at all — see Task 3's note on why that couldn't be validated in CI). Time the second call — this is your first real signal for whether the Task 4 Step 3 memory/timeout values need adjusting before this goes anywhere near the custom domain.
+Expected: same responses as Task 4 Steps 4-5's console tests. Time the second call under real HTTP (not the console's own timer) — this is your clearest signal yet for whether the Task 4 Step 3 memory/timeout values need further adjusting before this goes anywhere near the custom domain.
 
 ---
 
