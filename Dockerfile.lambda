@@ -37,6 +37,16 @@ ENV NUMBA_CACHE_DIR=/tmp/numba_cache
 
 COPY --from=builder /app/.venv /app/.venv
 
+# exposan.htl creates its own "results" output directory at import time
+# (exposan/utils.py:_init_modules, called from exposan/htl/__init__.py),
+# unconditionally, regardless of whether anything is ever written there.
+# "data" ships with the package so that half of the check passes; "results"
+# does not, so the bare os.mkdir() call crashes on Lambda's read-only
+# filesystem before the app can even start. Pre-create it here, in the
+# writable build stage, so the runtime's os.path.isdir() check finds it
+# already there and skips the mkdir.
+RUN mkdir -p /app/.venv/lib/python3.10/site-packages/exposan/htl/results
+
 WORKDIR /app
 
 COPY . .

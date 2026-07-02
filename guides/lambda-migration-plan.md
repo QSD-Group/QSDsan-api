@@ -129,7 +129,7 @@ git commit -m "Delete unused EXPOSAN_RESULTS_PATH code that crashes on Lambda's 
 # Lambda container-image variant of the FastAPI backend.
 #
 # Reuses the same dependency-build stage as the ECS Dockerfile. The
-# runtime stage differs in two ways:
+# runtime stage differs in three ways:
 #   1. It adds the AWS Lambda Web Adapter as an extension, which lets the
 #      existing uvicorn/FastAPI app run inside Lambda completely
 #      unmodified (the adapter proxies Lambda invocations to HTTP calls
@@ -137,6 +137,16 @@ git commit -m "Delete unused EXPOSAN_RESULTS_PATH code that crashes on Lambda's 
 #   2. It points every cache/config directory the scientific stack might
 #      write to (numba JIT cache, matplotlib font cache, etc.) at /tmp,
 #      since Lambda's filesystem is read-only everywhere else.
+#   3. It pre-creates exposan/htl/results (see the RUN mkdir below) -
+#      exposan.htl creates that directory itself at import time
+#      (exposan/utils.py:_init_modules, called unconditionally from
+#      exposan/htl/__init__.py), and it isn't shipped with the package
+#      the way exposan/htl/data is, so the bare os.mkdir() call crashes
+#      Lambda's read-only filesystem before the app can even start.
+#      Confirmed via a real Lambda console test invocation - this is not
+#      hypothetical. Pre-creating it here, in the writable build stage,
+#      makes the runtime's own os.path.isdir() check find it already
+#      there and skip the mkdir.
 
 FROM python:3.10-slim AS builder
 
@@ -165,6 +175,8 @@ ENV NUMBA_CACHE_DIR=/tmp/numba_cache
 
 COPY --from=builder /app/.venv /app/.venv
 
+RUN mkdir -p /app/.venv/lib/python3.10/site-packages/exposan/htl/results
+
 WORKDIR /app
 
 COPY . .
@@ -181,6 +193,8 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5000"]
 git add Dockerfile.lambda
 git commit -m "Add Lambda container-image variant of the backend Dockerfile"
 ```
+
+**Note (added after a real Task 4 Step 4 test invocation failed):** the version above already includes the `exposan/htl/results` pre-creation fix. If you're following this plan fresh, you won't hit the crash it fixes; this note exists so the reasoning isn't lost. Checked and ruled out as *not* having the same problem: `exposan/__init__.py` itself (no writes), and every `biorefineries` subpackage this app imports (`cane`, `tea`, `cellulosic`, `cornstover` - no `os.mkdir`/`os.makedirs` anywhere in them). The only other exposan submodules with this `_init_modules`-at-import pattern (`adm`, `asm`, `biogenic_refinery`, `bsm1`, `bsm2`, `bwaise`, `cas`, `eco_san`, `pm2_batch`, `pm2_ecorecover`, `pou_disinfection`, `saf`) are never imported by this app, so they're irrelevant here - but worth knowing about if a future endpoint ever imports one of them.
 
 ---
 
