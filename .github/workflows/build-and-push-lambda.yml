@@ -60,7 +60,7 @@ jobs:
           fi
 
           echo "Checking a real HTL calculation..."
-          http_code=$(curl -s -o /tmp/htl_response.json -w "%{http_code}" "http://localhost:5000/api/v1/htl/calc?kg_hr=150")
+          http_code=$(curl -s -o /tmp/htl_response.json -w "%{http_code}" "http://localhost:5000/api/v1/htl/calc?sludge=150")
           cat /tmp/htl_response.json
           if [ "$http_code" != "200" ]; then
             echo "HTL calc endpoint returned $http_code"

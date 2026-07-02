@@ -258,7 +258,7 @@ jobs:
           fi
 
           echo "Checking a real HTL calculation..."
-          http_code=$(curl -s -o /tmp/htl_response.json -w "%{http_code}" "http://localhost:5000/api/v1/htl/calc?kg_hr=150")
+          http_code=$(curl -s -o /tmp/htl_response.json -w "%{http_code}" "http://localhost:5000/api/v1/htl/calc?sludge=150")
           cat /tmp/htl_response.json
           if [ "$http_code" != "200" ]; then
             echo "HTL calc endpoint returned $http_code"
@@ -406,7 +406,7 @@ Console: the function → Configuration → Function URL → Create function URL
 
 ```bash
 curl -s "https://<function-url-id>.lambda-url.us-east-2.on.aws/health"
-curl -s "https://<function-url-id>.lambda-url.us-east-2.on.aws/api/v1/htl/calc?kg_hr=150"
+curl -s "https://<function-url-id>.lambda-url.us-east-2.on.aws/api/v1/htl/calc?sludge=150"
 ```
 
 Expected: same responses as the CI smoke tests in Task 3. Time the second call — this is your first real signal for whether the Task 4 Step 3 memory/timeout values need adjusting before this goes anywhere near the custom domain.
@@ -465,7 +465,7 @@ Origins tab → Edit the existing origin → change "Origin domain" to the Funct
 
 ```bash
 curl -s https://nj-bioenergy-api.apps.qsdsan.com/health
-curl -s "https://nj-bioenergy-api.apps.qsdsan.com/api/v1/htl/calc?kg_hr=150"
+curl -s "https://nj-bioenergy-api.apps.qsdsan.com/api/v1/htl/calc?sludge=150"
 ```
 
 Run each of these **5-10 times in a row** (not just once) — you want to see both a cold-start response and subsequent warm ones, since that variance is exactly what the old ECS/ALB setup didn't have and what you're trading for the cost savings. Confirm the frontend (`nj-bioenergy.apps.qsdsan.com`) still works end-to-end in a browser, including a real HTL calculation through the UI.
