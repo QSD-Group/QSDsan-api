@@ -19,7 +19,7 @@ import biosteam as bst
 # for file paths
 import os
 
-from exposan import htl
+from exposan.htl import create_components
 from biorefineries.cane import create_sugarcane_chemicals
 from biorefineries.tea import create_cellulosic_ethanol_tea
 
@@ -53,7 +53,7 @@ class BoilerTurbogenerator(bst.facilities.BoilerTurbogenerator):
         else: self.electricity_demand = 0
 
 def create_chemicals():
-    htl_cmps = htl.create_components()
+    htl_cmps = create_components()
     cane_chems = create_sugarcane_chemicals()
     
     Water = htl_cmps.Water
