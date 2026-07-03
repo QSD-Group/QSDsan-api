@@ -479,24 +479,51 @@ Replace every `patch("app.routers.htl.htl_convert_kg", ...)` and `patch("app.rou
 
 Replace every `patch("app.routers.htl.htl_county", ...)` with `patch("app.routers.htl_lookup.htl_county", ...)` (5 occurrences across `TestHTLCountyEndpoint`).
 
-- [ ] **Step 7: Delete the old files**
+- [ ] **Step 7: Update `app/main.py`'s HTL import and router registration**
+
+`app/main.py` still imports the soon-to-be-deleted `app.routers.htl` — update it now so the full test suite stays green after this task (rather than waiting until Task 6). Replace:
+
+```python
+from app.routers import htl, combustion, fermentation, health
+```
+
+with:
+
+```python
+from app.routers import htl_calc, htl_lookup, combustion, fermentation, health
+```
+
+Replace:
+
+```python
+app.include_router(htl.router, prefix="/api/v1", tags=["HTL"])
+```
+
+with:
+
+```python
+app.include_router(htl_calc.router, prefix="/api/v1", tags=["HTL"])
+app.include_router(htl_lookup.router, prefix="/api/v1", tags=["HTL"])
+```
+
+- [ ] **Step 8: Delete the old files**
 
 ```bash
 git rm app/services/htl_service.py app/routers/htl.py
 ```
 
-- [ ] **Step 8: Run the HTL tests**
+- [ ] **Step 9: Run the full test suite**
 
-Run: `uv run pytest tests/test_htl.py -v`
-Expected: all tests pass (router registration happens in Task 6 — until then, `app/main.py` still imports the deleted `app.routers.htl`, so this step will fail until Task 6 lands. If executing tasks strictly in order, skip running the full test file here and instead just run:)
+Run: `uv run pytest -v`
+Expected: all tests pass — `app/main.py` now imports the new `htl_lookup`/`htl_calc` routers, and `app/routers/combustion.py`/`app/routers/fermentation.py` (untouched by this task) still exist, so nothing else is broken.
 
-Run: `uv run python -c "from app.services.htl.lookup import htl_convert_sludge_mass_kg_hr, htl_county; from app.services.htl.calc import htl_calc; print(htl_calc(150))"`
+Also run: `uv run python -c "from app.services.htl.calc import htl_calc; print(htl_calc(150))"`
 Expected: prints a `(price, gwp)` tuple close to the original recorded value `(397878.8243590509, 408526.3837657836)` for `htl_calc(150)` (the model-caching change does not alter this — it's the same computation, same inputs).
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add app/services/htl app/routers/htl_lookup.py app/routers/htl_calc.py tests/test_htl.py
+git add app/services/htl app/routers/htl_lookup.py app/routers/htl_calc.py app/main.py tests/test_htl.py
 git commit -m "Split HTL service/router into lookup (light) and calc (heavy, cached model)"
 ```
 
@@ -1321,26 +1348,51 @@ def test_sludge_derived_chemicals_have_expected_energetics():
         assert chem.Hf == 0
 ```
 
-- [ ] **Step 7: Delete the old files**
+- [ ] **Step 7: Update `app/main.py`'s combustion import and router registration**
+
+Replace:
+
+```python
+from app.routers import htl_calc, htl_lookup, combustion, fermentation, health
+```
+
+with:
+
+```python
+from app.routers import htl_calc, htl_lookup, combustion_calc, combustion_lookup, fermentation, health
+```
+
+Replace:
+
+```python
+app.include_router(combustion.router, prefix="/api/v1", tags=["Combustion"])
+```
+
+with:
+
+```python
+app.include_router(combustion_calc.router, prefix="/api/v1", tags=["Combustion"])
+app.include_router(combustion_lookup.router, prefix="/api/v1", tags=["Combustion"])
+```
+
+- [ ] **Step 8: Delete the old files**
 
 ```bash
 git rm app/services/combustion_service.py app/routers/combustion.py
 ```
 
-- [ ] **Step 8: Run the combustion tests**
+- [ ] **Step 9: Run the full test suite**
 
-Run: `uv run python -c "from app.services.combustion.calc import combustion_calc; print(combustion_calc(1000.0, 'sludge'))"`
+Run: `uv run pytest -v`
+Expected: all tests pass.
+
+Also run: `uv run python -c "from app.services.combustion.calc import combustion_calc; print(combustion_calc(1000.0, 'sludge'))"`
 Expected: prints a tuple close to the original recorded value for `combustion_calc(1000, "sludge")`: `('sludge', 1000.0, 16771611.411033249, 3.7020225242133353, 0.037930558649726796)` (allow floating-point tolerance).
 
-Run: `uv run pytest tests/test_combustion_chemicals.py -v`
-Expected: both tests pass.
-
-(Full `tests/test_combustion.py` suite runs after Task 6 rewires `app/main.py` — same ordering note as Task 1 Step 8.)
-
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add app/services/combustion tests/test_combustion.py tests/test_combustion_chemicals.py
+git add app/services/combustion app/main.py tests/test_combustion.py tests/test_combustion_chemicals.py
 git commit -m "Split combustion service/router into lookup (light) and calc (heavy, no exposan/biorefineries)"
 ```
 
@@ -1784,23 +1836,71 @@ Replace every `patch("app.routers.fermentation.fermentation_kg", ...)` and `patc
 
 Replace every `patch("app.routers.fermentation.fermentation_county", ...)` with `patch("app.routers.fermentation_lookup.fermentation_county", ...)` (in `TestFermentationCountyEndpoint`).
 
-- [ ] **Step 7: Delete the old files**
+- [ ] **Step 7: Update `app/main.py`'s fermentation import and router registration**
+
+Replace:
+
+```python
+from app.routers import htl_calc, htl_lookup, combustion_calc, combustion_lookup, fermentation, health
+```
+
+with:
+
+```python
+from app.routers import (
+    health,
+    htl_lookup, htl_calc,
+    combustion_lookup, combustion_calc,
+    fermentation_lookup, fermentation_calc,
+)
+```
+
+Replace:
+
+```python
+app.include_router(fermentation.router, prefix="/api/v1", tags=["Fermentation"])
+```
+
+with:
+
+```python
+app.include_router(fermentation_calc.router, prefix="/api/v1", tags=["Fermentation"])
+app.include_router(fermentation_lookup.router, prefix="/api/v1", tags=["Fermentation"])
+```
+
+`app/main.py`'s router-registration block should now read, in full:
+
+```python
+app.include_router(htl_calc.router, prefix="/api/v1", tags=["HTL"])
+app.include_router(htl_lookup.router, prefix="/api/v1", tags=["HTL"])
+app.include_router(combustion_calc.router, prefix="/api/v1", tags=["Combustion"])
+app.include_router(combustion_lookup.router, prefix="/api/v1", tags=["Combustion"])
+app.include_router(fermentation_calc.router, prefix="/api/v1", tags=["Fermentation"])
+app.include_router(fermentation_lookup.router, prefix="/api/v1", tags=["Fermentation"])
+
+app.include_router(health.router, tags=["Health"])
+```
+
+This matches the target `app/main.py` state Task 6 builds on — Task 6 no longer needs to touch router imports/registration at all, only the middleware/CORS/exception-handler block.
+
+- [ ] **Step 8: Delete the old files**
 
 ```bash
 git rm app/services/fermentation_service.py app/routers/fermentation.py
 ```
 
-- [ ] **Step 8: Sanity-check the calc function directly**
+- [ ] **Step 9: Run the full test suite**
 
-Run: `uv run python -c "from app.services.fermentation.calc import fermentation_calc; print(fermentation_calc(100))"`
+Run: `uv run pytest -v`
+Expected: all tests pass.
+
+Also run: `uv run python -c "from app.services.fermentation.calc import fermentation_calc; print(fermentation_calc(100))"`
 Expected: prints a `(ethanol, price, gwp)` tuple close to the original recorded value `(0.0, 0.0, 0.0)` for `fermentation_calc(100)`.
 
-(Full `tests/test_fermentation.py` suite runs after Task 6 — same ordering note as Tasks 1/3.)
-
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add app/services/fermentation app/routers/fermentation_lookup.py app/routers/fermentation_calc.py tests/test_fermentation.py
+git add app/services/fermentation app/routers/fermentation_lookup.py app/routers/fermentation_calc.py app/main.py tests/test_fermentation.py
 git commit -m "Split fermentation service/router into lookup (light) and calc (heavy, cached biorefinery)"
 ```
 
@@ -1878,7 +1978,7 @@ git commit -m "Make /ready health check light-safe (no biosteam/service imports)
 
 ---
 
-### Task 6: Shared app factory + rewire `app/main.py`
+### Task 6: Shared app factory + simplify `app/main.py`
 
 **Files:**
 - Create: `app/app_factory.py`
@@ -1886,6 +1986,8 @@ git commit -m "Make /ready health check light-safe (no biosteam/service imports)
 
 **Interfaces:**
 - Produces: `app.app_factory.create_app() -> fastapi.FastAPI` (middleware + CORS + exception handlers pre-registered, no routers). `app.app_factory.ALLOWED_ORIGINS` (moved from `app/main.py`, re-exported there for `tests/test_cors.py`'s `from app.main import ALLOWED_ORIGINS`).
+
+By this task, Tasks 1/3/4 have already updated `app/main.py`'s router imports and `include_router` calls incrementally — this task only extracts the FastAPI-construction/middleware/CORS/exception-handler block into `app_factory.create_app()`. The router-registration lines are untouched.
 
 - [ ] **Step 1: Create `app/app_factory.py`**
 
@@ -2057,13 +2159,13 @@ if __name__ == "__main__":
 - [ ] **Step 3: Run the full test suite**
 
 Run: `uv run pytest -v`
-Expected: all tests pass — this is the first point since Task 1 where the full suite can run end-to-end, since `app/main.py` now imports the new split routers instead of the deleted monolithic ones.
+Expected: all tests pass — this is a pure extract-function refactor (middleware/CORS/exception-handler setup moved into `create_app()`), so nothing about request handling changes; `tests/test_cors.py`'s `from app.main import ALLOWED_ORIGINS` still resolves since `app/main.py` re-exports it from `app_factory`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add app/app_factory.py app/main.py
-git commit -m "Add shared app_factory, rewire app/main.py to the split routers"
+git commit -m "Extract shared app_factory.create_app() out of app/main.py"
 ```
 
 ---
