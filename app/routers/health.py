@@ -87,7 +87,7 @@ def check_dependencies() -> Dict[str, str]:
         dependencies["combustion_service"] = "FAILED"
     
     try:
-        from app.services import fermentation_service
+        from app.services.fermentation import lookup as fermentation_lookup, calc as fermentation_calc
         dependencies["fermentation_service"] = "OK"
     except ImportError:
         dependencies["fermentation_service"] = "FAILED"

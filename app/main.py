@@ -19,7 +19,12 @@ from fastapi.exceptions import RequestValidationError
 import uvicorn
 
 # Import routers
-from app.routers import htl_calc, htl_lookup, combustion_calc, combustion_lookup, fermentation, health
+from app.routers import (
+    health,
+    htl_lookup, htl_calc,
+    combustion_lookup, combustion_calc,
+    fermentation_lookup, fermentation_calc,
+)
 
 # Import middleware
 from app.middleware import (
@@ -71,7 +76,8 @@ app.include_router(htl_calc.router, prefix="/api/v1", tags=["HTL"])
 app.include_router(htl_lookup.router, prefix="/api/v1", tags=["HTL"])
 app.include_router(combustion_calc.router, prefix="/api/v1", tags=["Combustion"])
 app.include_router(combustion_lookup.router, prefix="/api/v1", tags=["Combustion"])
-app.include_router(fermentation.router, prefix="/api/v1", tags=["Fermentation"])
+app.include_router(fermentation_calc.router, prefix="/api/v1", tags=["Fermentation"])
+app.include_router(fermentation_lookup.router, prefix="/api/v1", tags=["Fermentation"])
 
 # Register health monitoring endpoints (no API version prefix for standard health endpoints)
 app.include_router(health.router, tags=["Health"])

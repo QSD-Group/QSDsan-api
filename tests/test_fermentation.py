@@ -24,7 +24,7 @@ class TestFermentationConversion:
 
     @pytest.fixture(autouse=True)
     def setup(self):
-        from app.services.fermentation_service import fermentation_convert_feedstock_kg_hr
+        from app.services.fermentation.lookup import fermentation_convert_feedstock_kg_hr
         self.convert = fermentation_convert_feedstock_kg_hr
 
     def test_kghr_returns_same_value(self):
@@ -60,14 +60,14 @@ class TestFermentationCalcEndpoint:
     """Tests for GET /api/v1/fermentation/calc."""
 
     def test_valid_request_returns_200(self, client):
-        with patch("app.routers.fermentation.fermentation_kg", return_value=100.0), \
-             patch("app.routers.fermentation.fermentation_calc", return_value=_CALC_RESULT):
+        with patch("app.routers.fermentation_calc.fermentation_kg", return_value=100.0), \
+             patch("app.routers.fermentation_calc.fermentation_calc", return_value=_CALC_RESULT):
             response = client.get("/api/v1/fermentation/calc?mass=100&unit=kghr")
         assert response.status_code == 200
 
     def test_response_has_expected_fields(self, client):
-        with patch("app.routers.fermentation.fermentation_kg", return_value=100.0), \
-             patch("app.routers.fermentation.fermentation_calc", return_value=_CALC_RESULT):
+        with patch("app.routers.fermentation_calc.fermentation_kg", return_value=100.0), \
+             patch("app.routers.fermentation_calc.fermentation_calc", return_value=_CALC_RESULT):
             response = client.get("/api/v1/fermentation/calc?mass=100")
         data = response.json()
         assert "mass" in data
@@ -76,8 +76,8 @@ class TestFermentationCalcEndpoint:
         assert "gwp" in data
 
     def test_response_values_match_mocked_service(self, client):
-        with patch("app.routers.fermentation.fermentation_kg", return_value=100.0), \
-             patch("app.routers.fermentation.fermentation_calc", return_value=_CALC_RESULT):
+        with patch("app.routers.fermentation_calc.fermentation_kg", return_value=100.0), \
+             patch("app.routers.fermentation_calc.fermentation_calc", return_value=_CALC_RESULT):
             response = client.get("/api/v1/fermentation/calc?mass=100&unit=kghr")
         data = response.json()
         assert data["mass"] == 100.0
@@ -86,8 +86,8 @@ class TestFermentationCalcEndpoint:
         assert data["gwp"] == pytest.approx(13.63)
 
     def test_mass_converted_before_passing_to_service(self, client):
-        with patch("app.routers.fermentation.fermentation_kg", return_value=11.41) as mock_convert, \
-             patch("app.routers.fermentation.fermentation_calc", return_value=_CALC_RESULT):
+        with patch("app.routers.fermentation_calc.fermentation_kg", return_value=11.41) as mock_convert, \
+             patch("app.routers.fermentation_calc.fermentation_calc", return_value=_CALC_RESULT):
             client.get("/api/v1/fermentation/calc?mass=100&unit=tonnes")
         mock_convert.assert_called_once_with(100.0, "tonnes")
 
@@ -110,8 +110,8 @@ class TestFermentationCalcEndpoint:
 
     def test_all_valid_units(self, client):
         for unit in ["kghr", "tons", "tonnes"]:
-            with patch("app.routers.fermentation.fermentation_kg", return_value=100.0), \
-                 patch("app.routers.fermentation.fermentation_calc", return_value=_CALC_RESULT):
+            with patch("app.routers.fermentation_calc.fermentation_kg", return_value=100.0), \
+                 patch("app.routers.fermentation_calc.fermentation_calc", return_value=_CALC_RESULT):
                 response = client.get(f"/api/v1/fermentation/calc?mass=100&unit={unit}")
             assert response.status_code == 200, f"Failed for unit={unit}"
 
@@ -120,12 +120,12 @@ class TestFermentationCountyEndpoint:
     """Tests for GET /api/v1/fermentation/county."""
 
     def test_valid_county_returns_200(self, client):
-        with patch("app.routers.fermentation.fermentation_county", return_value=_COUNTY_RESULT):
+        with patch("app.routers.fermentation_lookup.fermentation_county", return_value=_COUNTY_RESULT):
             response = client.get("/api/v1/fermentation/county?county_name=Atlantic")
         assert response.status_code == 200
 
     def test_response_has_expected_fields(self, client):
-        with patch("app.routers.fermentation.fermentation_county", return_value=_COUNTY_RESULT):
+        with patch("app.routers.fermentation_lookup.fermentation_county", return_value=_COUNTY_RESULT):
             response = client.get("/api/v1/fermentation/county?county_name=Atlantic")
         data = response.json()
         assert "county_name" in data
@@ -135,7 +135,7 @@ class TestFermentationCountyEndpoint:
         assert "gwp" in data
 
     def test_response_values_match_mocked_service(self, client):
-        with patch("app.routers.fermentation.fermentation_county", return_value=_COUNTY_RESULT):
+        with patch("app.routers.fermentation_lookup.fermentation_county", return_value=_COUNTY_RESULT):
             response = client.get("/api/v1/fermentation/county?county_name=Atlantic")
         data = response.json()
         assert data["county_name"] == "Atlantic"
@@ -143,7 +143,7 @@ class TestFermentationCountyEndpoint:
         assert data["ethanol"] == pytest.approx(1.2)
 
     def test_county_name_forwarded_to_service(self, client):
-        with patch("app.routers.fermentation.fermentation_county", return_value=_COUNTY_RESULT) as mock_county:
+        with patch("app.routers.fermentation_lookup.fermentation_county", return_value=_COUNTY_RESULT) as mock_county:
             client.get("/api/v1/fermentation/county?county_name=Bergen")
         mock_county.assert_called_once_with("Bergen")
 
@@ -152,6 +152,6 @@ class TestFermentationCountyEndpoint:
         assert response.status_code == 422
 
     def test_unknown_county_returns_404(self, client):
-        with patch("app.routers.fermentation.fermentation_county", side_effect=ValueError("County not found")):
+        with patch("app.routers.fermentation_lookup.fermentation_county", side_effect=ValueError("County not found")):
             response = client.get("/api/v1/fermentation/county?county_name=InvalidCounty")
         assert response.status_code == 404
