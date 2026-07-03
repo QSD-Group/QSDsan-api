@@ -27,9 +27,9 @@ class TestCombustionCalcService:
         use the wrong moisture fraction because dry_mass was accepted by
         combustion_calc but never passed down to combustion_calc_raw.
         """
-        from app.services.combustion_service import combustion_calc
+        from app.services.combustion.calc import combustion_calc
         with patch(
-            "app.services.combustion_service.combustion_calc_raw",
+            "app.services.combustion.calc.combustion_calc_raw",
             return_value=(100.0, 0.5, 0.005),
         ) as mock_raw:
             combustion_calc(1000.0, "sludge", dry_mass=500.0)
@@ -37,28 +37,28 @@ class TestCombustionCalcService:
         assert kwargs.get("dry_mass_in_kg_hr") == 500.0
 
     def test_invalid_waste_type_raises_value_error(self):
-        from app.services.combustion_service import combustion_calc
-        with patch("app.services.combustion_service.combustion_calc_raw", return_value=(100.0, 0.5, 0.005)):
+        from app.services.combustion.calc import combustion_calc
+        with patch("app.services.combustion.calc.combustion_calc_raw", return_value=(100.0, 0.5, 0.005)):
             with pytest.raises(ValueError):
                 combustion_calc(1000.0, "invalid_type")
 
     def test_non_string_waste_type_raises_type_error(self):
-        from app.services.combustion_service import combustion_calc
+        from app.services.combustion.calc import combustion_calc
         with pytest.raises(TypeError):
             combustion_calc(1000.0, 123)
 
     def test_non_numeric_mass_raises_type_error(self):
-        from app.services.combustion_service import combustion_calc
+        from app.services.combustion.calc import combustion_calc
         with pytest.raises(TypeError):
             combustion_calc("1000", "sludge")
 
     def test_zero_mass_raises_value_error(self):
-        from app.services.combustion_service import combustion_calc
+        from app.services.combustion.calc import combustion_calc
         with pytest.raises(ValueError):
             combustion_calc(0.0, "sludge")
 
     def test_negative_mass_raises_value_error(self):
-        from app.services.combustion_service import combustion_calc
+        from app.services.combustion.calc import combustion_calc
         with pytest.raises(ValueError):
             combustion_calc(-100.0, "sludge")
 
@@ -71,12 +71,12 @@ class TestCombustionCalcEndpoint:
     """Tests for GET /api/v1/combustion/calc."""
 
     def test_valid_request_returns_200(self, client):
-        with patch("app.routers.combustion.combustion_calc", return_value=_CALC_RESULT):
+        with patch("app.routers.combustion_calc.combustion_calc", return_value=_CALC_RESULT):
             response = client.get("/api/v1/combustion/calc?mass=100&unit=kghr&waste_type=sludge")
         assert response.status_code == 200
 
     def test_response_has_expected_fields(self, client):
-        with patch("app.routers.combustion.combustion_calc", return_value=_CALC_RESULT):
+        with patch("app.routers.combustion_calc.combustion_calc", return_value=_CALC_RESULT):
             response = client.get("/api/v1/combustion/calc?mass=100")
         data = response.json()
         assert "mass" in data
@@ -86,7 +86,7 @@ class TestCombustionCalcEndpoint:
         assert "percent" in data
 
     def test_response_values_match_mocked_service(self, client):
-        with patch("app.routers.combustion.combustion_calc", return_value=_CALC_RESULT):
+        with patch("app.routers.combustion_calc.combustion_calc", return_value=_CALC_RESULT):
             response = client.get("/api/v1/combustion/calc?mass=100&waste_type=sludge")
         data = response.json()
         assert data["waste_type"] == "sludge"
@@ -94,12 +94,12 @@ class TestCombustionCalcEndpoint:
         assert data["electricity"] == pytest.approx(1677161.41)
 
     def test_default_unit_is_kghr(self, client):
-        with patch("app.routers.combustion.combustion_calc", return_value=_CALC_RESULT):
+        with patch("app.routers.combustion_calc.combustion_calc", return_value=_CALC_RESULT):
             response = client.get("/api/v1/combustion/calc?mass=100")
         assert response.status_code == 200
 
     def test_default_waste_type_is_sludge(self, client):
-        with patch("app.routers.combustion.combustion_calc", return_value=_CALC_RESULT) as mock_calc:
+        with patch("app.routers.combustion_calc.combustion_calc", return_value=_CALC_RESULT) as mock_calc:
             client.get("/api/v1/combustion/calc?mass=100")
         args, _ = mock_calc.call_args
         assert args[1] == "sludge"
@@ -127,13 +127,13 @@ class TestCombustionCalcEndpoint:
     def test_all_valid_waste_types(self, client):
         for waste_type in ["sludge", "food", "fog", "green", "manure"]:
             mock_result = (waste_type, 100.0, 1677161.41, 0.37, 0.0038)
-            with patch("app.routers.combustion.combustion_calc", return_value=mock_result):
+            with patch("app.routers.combustion_calc.combustion_calc", return_value=mock_result):
                 response = client.get(f"/api/v1/combustion/calc?mass=100&waste_type={waste_type}")
             assert response.status_code == 200, f"Failed for waste_type={waste_type}"
 
     def test_all_valid_units(self, client):
         for unit in ["kghr", "tons", "tonnes", "mgd", "m3d"]:
-            with patch("app.routers.combustion.combustion_calc", return_value=_CALC_RESULT):
+            with patch("app.routers.combustion_calc.combustion_calc", return_value=_CALC_RESULT):
                 response = client.get(f"/api/v1/combustion/calc?mass=100&unit={unit}")
             assert response.status_code == 200, f"Failed for unit={unit}"
 
@@ -142,12 +142,12 @@ class TestCombustionCountyEndpoint:
     """Tests for GET /api/v1/combustion/county."""
 
     def test_valid_county_returns_200(self, client):
-        with patch("app.routers.combustion.combustion_county", return_value=_COUNTY_RESULT):
+        with patch("app.routers.combustion_lookup.combustion_county", return_value=_COUNTY_RESULT):
             response = client.get("/api/v1/combustion/county?county_name=Essex&waste_type=sludge")
         assert response.status_code == 200
 
     def test_response_has_expected_fields(self, client):
-        with patch("app.routers.combustion.combustion_county", return_value=_COUNTY_RESULT):
+        with patch("app.routers.combustion_lookup.combustion_county", return_value=_COUNTY_RESULT):
             response = client.get("/api/v1/combustion/county?county_name=Essex")
         data = response.json()
         assert "county_name" in data
@@ -158,7 +158,7 @@ class TestCombustionCountyEndpoint:
         assert "percent" in data
 
     def test_response_values_match_mocked_service(self, client):
-        with patch("app.routers.combustion.combustion_county", return_value=_COUNTY_RESULT):
+        with patch("app.routers.combustion_lookup.combustion_county", return_value=_COUNTY_RESULT):
             response = client.get("/api/v1/combustion/county?county_name=Essex")
         data = response.json()
         assert data["county_name"] == "Essex"
@@ -170,7 +170,7 @@ class TestCombustionCountyEndpoint:
         assert response.status_code == 422
 
     def test_unknown_county_returns_404(self, client):
-        with patch("app.routers.combustion.combustion_county", return_value=None):
+        with patch("app.routers.combustion_lookup.combustion_county", return_value=None):
             response = client.get("/api/v1/combustion/county?county_name=InvalidCounty")
         assert response.status_code == 404
 
@@ -179,7 +179,7 @@ class TestCombustionCountyEndpoint:
         assert response.status_code == 422
 
     def test_county_and_waste_type_forwarded_to_service(self, client):
-        with patch("app.routers.combustion.combustion_county", return_value=_COUNTY_RESULT) as mock_county:
+        with patch("app.routers.combustion_lookup.combustion_county", return_value=_COUNTY_RESULT) as mock_county:
             client.get("/api/v1/combustion/county?county_name=Essex&waste_type=food")
         args, _ = mock_county.call_args
         assert args[0] == "Essex"
