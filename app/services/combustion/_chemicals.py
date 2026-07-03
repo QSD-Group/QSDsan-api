@@ -34,10 +34,18 @@ def _create_sludge_chemicals():
     degradability/organic fields); combustion never reads those fields, so
     they're rebuilt as plain thermosteam.Chemical here.
 
-    LHV and Hf are explicitly 0, matching exposan's own behavior: only HHV
-    is set explicitly there, and exposan.htl._components.create_components()
-    zeroes any of HHV/LHV/Hf left None after construction (confirmed
-    unchanged in EXPOsan's current main branch as of 2026-07-03).
+    HHV/LHV/Hf are assigned in this exact order (HHV explicit value, then
+    LHV=0, then Hf=0) to match exposan's own assignment order. Note: setting
+    Hf triggers thermosteam's Chemical.Hf setter, which recomputes HHV/LHV
+    from formula stoichiometry as a side effect—so the actual HHV/LHV end up
+    as thermosteam's recomputed values, not the literal numbers assigned
+    above, and only Hf itself ends up as 0. This is intentional-by-inheritance:
+    the old exposan code has the exact same three-line order and the exact
+    same clobbering behavior (confirmed via the parity test in
+    tests/test_combustion_chemicals.py), so this module reproduces it
+    faithfully rather than "fixing" it—changing the assignment order here
+    would be a behavior change relative to the old code, which this module
+    must not introduce.
     """
     chemicals = []
     for name in ("Lipids", "Proteins", "Carbohydrates", "Ash"):
