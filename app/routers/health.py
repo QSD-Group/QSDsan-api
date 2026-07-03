@@ -53,73 +53,39 @@ class MetricsResponse(BaseModel):
 
 
 def check_dependencies() -> Dict[str, str]:
-    """Check if critical dependencies are available"""
+    """Check if critical dependencies are available.
+
+    Only checks what every deployment (light or heavy) actually has:
+    fastapi/pandas (always present) and the data CSVs. Does not probe for
+    biosteam/exposan/biorefineries — those are only installed in the heavy
+    *-calc Lambda functions, not in light-api, so an unconditional import
+    here would make light-api's own /ready endpoint report a false failure.
+    """
     dependencies = {}
-    
+
     try:
         import pandas
         dependencies["pandas"] = "OK"
     except ImportError:
         dependencies["pandas"] = "FAILED"
-    
+
     try:
         import numpy
         dependencies["numpy"] = "OK"
     except ImportError:
         dependencies["numpy"] = "FAILED"
-    
-    try:
-        import biosteam
-        dependencies["biosteam"] = "OK"
-    except ImportError:
-        dependencies["biosteam"] = "FAILED"
-    
-    try:
-        from app.services.htl import lookup as htl_lookup, calc as htl_calc
-        dependencies["htl_service"] = "OK"
-    except ImportError:
-        dependencies["htl_service"] = "FAILED"
-    
-    try:
-        from app.services.combustion import lookup as combustion_lookup, calc as combustion_calc
-        dependencies["combustion_service"] = "OK"
-    except ImportError:
-        dependencies["combustion_service"] = "FAILED"
-    
-    try:
-        from app.services.fermentation import lookup as fermentation_lookup, calc as fermentation_calc
-        dependencies["fermentation_service"] = "OK"
-    except ImportError:
-        dependencies["fermentation_service"] = "FAILED"
-    
-    # Check data files
-    try:
-        htl_data_path = os.path.join(os.path.dirname(__file__), "..", "data", "htl", "htl_data.csv")
-        if os.path.exists(htl_data_path):
-            dependencies["htl_data"] = "OK"
-        else:
-            dependencies["htl_data"] = "MISSING"
-    except Exception:
-        dependencies["htl_data"] = "ERROR"
-    
-    try:
-        combustion_data_path = os.path.join(os.path.dirname(__file__), "..", "data", "combustion", "combustion_data.csv")
-        if os.path.exists(combustion_data_path):
-            dependencies["combustion_data"] = "OK"
-        else:
-            dependencies["combustion_data"] = "MISSING"
-    except Exception:
-        dependencies["combustion_data"] = "ERROR"
-    
-    try:
-        fermentation_data_path = os.path.join(os.path.dirname(__file__), "..", "data", "fermentation", "fermentation_data.csv")
-        if os.path.exists(fermentation_data_path):
-            dependencies["fermentation_data"] = "OK"
-        else:
-            dependencies["fermentation_data"] = "MISSING"
-    except Exception:
-        dependencies["fermentation_data"] = "ERROR"
-    
+
+    for name, rel_path in (
+        ("htl_data", os.path.join("htl", "htl_data.csv")),
+        ("combustion_data", os.path.join("combustion", "combustion_data.csv")),
+        ("fermentation_data", os.path.join("fermentation", "fermentation_data.csv")),
+    ):
+        try:
+            data_path = os.path.join(os.path.dirname(__file__), "..", "data", rel_path)
+            dependencies[name] = "OK" if os.path.exists(data_path) else "MISSING"
+        except Exception:
+            dependencies[name] = "ERROR"
+
     return dependencies
 
 
