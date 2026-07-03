@@ -75,7 +75,7 @@ def check_dependencies() -> Dict[str, str]:
         dependencies["biosteam"] = "FAILED"
     
     try:
-        from app.services import htl_service
+        from app.services.htl import lookup as htl_lookup, calc as htl_calc
         dependencies["htl_service"] = "OK"
     except ImportError:
         dependencies["htl_service"] = "FAILED"
