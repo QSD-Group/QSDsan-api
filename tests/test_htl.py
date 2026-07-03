@@ -17,7 +17,7 @@ class TestHTLConversion:
 
     @pytest.fixture(autouse=True)
     def setup(self):
-        from app.services.htl_service import htl_convert_sludge_mass_kg_hr
+        from app.services.htl.lookup import htl_convert_sludge_mass_kg_hr
         self.convert = htl_convert_sludge_mass_kg_hr
 
     def test_kghr_returns_same_value(self):
@@ -63,14 +63,14 @@ class TestHTLCalcEndpoint:
     """Tests for GET /api/v1/htl/calc."""
 
     def test_valid_request_returns_200(self, client):
-        with patch("app.routers.htl.htl_convert_kg", return_value=100.0), \
-             patch("app.routers.htl.htl_calc", return_value=(2.5, 8.0)):
+        with patch("app.routers.htl_calc.htl_convert_kg", return_value=100.0), \
+             patch("app.routers.htl_calc.htl_calc", return_value=(2.5, 8.0)):
             response = client.get("/api/v1/htl/calc?sludge=100&unit=kghr")
         assert response.status_code == 200
 
     def test_response_has_expected_fields(self, client):
-        with patch("app.routers.htl.htl_convert_kg", return_value=100.0), \
-             patch("app.routers.htl.htl_calc", return_value=(2.5, 8.0)):
+        with patch("app.routers.htl_calc.htl_convert_kg", return_value=100.0), \
+             patch("app.routers.htl_calc.htl_calc", return_value=(2.5, 8.0)):
             response = client.get("/api/v1/htl/calc?sludge=100")
         data = response.json()
         assert "sludge" in data
@@ -78,8 +78,8 @@ class TestHTLCalcEndpoint:
         assert "gwp" in data
 
     def test_response_values_match_mocked_service(self, client):
-        with patch("app.routers.htl.htl_convert_kg", return_value=100.0), \
-             patch("app.routers.htl.htl_calc", return_value=(2.5, 8.0)):
+        with patch("app.routers.htl_calc.htl_convert_kg", return_value=100.0), \
+             patch("app.routers.htl_calc.htl_calc", return_value=(2.5, 8.0)):
             response = client.get("/api/v1/htl/calc?sludge=100&unit=kghr")
         data = response.json()
         assert data["sludge"] == 100.0
@@ -87,8 +87,8 @@ class TestHTLCalcEndpoint:
         assert data["gwp"] == 8.0
 
     def test_default_unit_is_kghr(self, client):
-        with patch("app.routers.htl.htl_convert_kg", return_value=100.0) as mock_convert, \
-             patch("app.routers.htl.htl_calc", return_value=(2.5, 8.0)):
+        with patch("app.routers.htl_calc.htl_convert_kg", return_value=100.0) as mock_convert, \
+             patch("app.routers.htl_calc.htl_calc", return_value=(2.5, 8.0)):
             client.get("/api/v1/htl/calc?sludge=100")
         mock_convert.assert_called_once_with(100.0, "kghr")
 
@@ -110,8 +110,8 @@ class TestHTLCalcEndpoint:
 
     def test_all_valid_units(self, client):
         for unit in ["kghr", "tons", "tonnes", "mgd", "m3d"]:
-            with patch("app.routers.htl.htl_convert_kg", return_value=100.0), \
-                 patch("app.routers.htl.htl_calc", return_value=(2.5, 8.0)):
+            with patch("app.routers.htl_calc.htl_convert_kg", return_value=100.0), \
+                 patch("app.routers.htl_calc.htl_calc", return_value=(2.5, 8.0)):
                 response = client.get(f"/api/v1/htl/calc?sludge=100&unit={unit}")
             assert response.status_code == 200, f"Failed for unit={unit}"
 
@@ -120,12 +120,12 @@ class TestHTLCountyEndpoint:
     """Tests for GET /api/v1/htl/county."""
 
     def test_valid_county_returns_200(self, client):
-        with patch("app.routers.htl.htl_county", return_value=("Atlantic", 8991.7, 162.6, 176.1)):
+        with patch("app.routers.htl_lookup.htl_county", return_value=("Atlantic", 8991.7, 162.6, 176.1)):
             response = client.get("/api/v1/htl/county?county_name=Atlantic")
         assert response.status_code == 200
 
     def test_response_has_expected_fields(self, client):
-        with patch("app.routers.htl.htl_county", return_value=("Atlantic", 8991.7, 162.6, 176.1)):
+        with patch("app.routers.htl_lookup.htl_county", return_value=("Atlantic", 8991.7, 162.6, 176.1)):
             response = client.get("/api/v1/htl/county?county_name=Atlantic")
         data = response.json()
         assert "county_name" in data
@@ -134,7 +134,7 @@ class TestHTLCountyEndpoint:
         assert "gwp" in data
 
     def test_response_values_match_mocked_service(self, client):
-        with patch("app.routers.htl.htl_county", return_value=("Atlantic", 8991.7, 162.6, 176.1)):
+        with patch("app.routers.htl_lookup.htl_county", return_value=("Atlantic", 8991.7, 162.6, 176.1)):
             response = client.get("/api/v1/htl/county?county_name=Atlantic")
         data = response.json()
         assert data["county_name"] == "Atlantic"
@@ -143,7 +143,7 @@ class TestHTLCountyEndpoint:
         assert data["gwp"] == 176.1
 
     def test_county_name_forwarded_to_service(self, client):
-        with patch("app.routers.htl.htl_county", return_value=("Essex", 5000.0, 150.0, 160.0)) as mock_county:
+        with patch("app.routers.htl_lookup.htl_county", return_value=("Essex", 5000.0, 150.0, 160.0)) as mock_county:
             client.get("/api/v1/htl/county?county_name=Essex")
         mock_county.assert_called_once_with("Essex")
 
@@ -152,6 +152,6 @@ class TestHTLCountyEndpoint:
         assert response.status_code == 422
 
     def test_unknown_county_returns_404(self, client):
-        with patch("app.routers.htl.htl_county", side_effect=ValueError("County not found")):
+        with patch("app.routers.htl_lookup.htl_county", side_effect=ValueError("County not found")):
             response = client.get("/api/v1/htl/county?county_name=InvalidCounty")
         assert response.status_code == 404

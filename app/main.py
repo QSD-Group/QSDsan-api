@@ -18,8 +18,8 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import uvicorn
 
-# Import routers 
-from app.routers import htl, combustion, fermentation, health
+# Import routers
+from app.routers import htl_calc, htl_lookup, combustion, fermentation, health
 
 # Import middleware
 from app.middleware import (
@@ -67,7 +67,8 @@ app.add_middleware(
 )
 
 # Register routers with API v1 prefix (matching Flask structure)
-app.include_router(htl.router, prefix="/api/v1", tags=["HTL"])
+app.include_router(htl_calc.router, prefix="/api/v1", tags=["HTL"])
+app.include_router(htl_lookup.router, prefix="/api/v1", tags=["HTL"])
 app.include_router(combustion.router, prefix="/api/v1", tags=["Combustion"])
 app.include_router(fermentation.router, prefix="/api/v1", tags=["Fermentation"])
 
