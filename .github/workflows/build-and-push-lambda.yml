@@ -1,24 +1,21 @@
-name: Build, smoke-test, and push Lambda image to ECR
+name: Build, smoke-test, and push Lambda images to ECR
 
-# Manual-dispatch only, on purpose: the Lambda function doesn't exist yet
-# (it's created by hand per the migration runbook in
-# guides/lambda-migration-plan.md), and this shouldn't run automatically
-# on every push to main until the Lambda path has been cut over to in
-# production. Once that's done, this can be folded into the normal
-# push-triggered pipeline like build-and-push-ecr.yml.
+# Manual-dispatch only, on purpose: the four Lambda functions don't exist
+# yet (created by hand per guides/lambda-restructure-plan.md's AWS
+# runbook tasks), and this shouldn't run automatically on every push to
+# main until the Lambda path has been cut over to in production. Once
+# that's done, this can be folded into the normal push-triggered pipeline
+# like build-and-push-ecr.yml.
 #
 # Runs on GitHub's hosted runner (which already has Docker) instead of
-# requiring a local Docker install, and smoke-tests the image (plain app
-# boot check - confirms uvicorn/FastAPI actually starts and answers
-# requests) before ever pushing to ECR.
+# requiring a local Docker install, and smoke-tests each image (health
+# check + one real request against that function's own heavy endpoint,
+# where it has one) before ever pushing to ECR.
 #
 # This does NOT validate the AWS Lambda Web Adapter's extension-proxy
 # behavior: the standalone Lambda Runtime Interface Emulator does not
-# support Lambda Extensions (confirmed - the adapter panics with
-# "extension registration failure" / "State transition is not allowed"
-# when run through RIE), so that path can only be exercised on real
-# Lambda. That's exactly what the AWS runbook's Task 4 Step 4 (console
-# test event) and Task 5 Step 2 (direct Function URL curl) are for.
+# support Lambda Extensions, so that path can only be exercised on real
+# Lambda (see the AWS runbook's function-creation test-event steps).
 
 on:
   workflow_dispatch: {}
@@ -30,21 +27,35 @@ permissions:
 env:
   AWS_REGION: us-east-2
   ECR_REPOSITORY: nj-bioenergy-api
-  IMAGE_TAG: nj-bioenergy-api:lambda-smoketest
 
 jobs:
   build-smoketest-and-push:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: light
+            dockerfile: Dockerfile.lambda.light
+            smoke_path: /api/v1/htl/county?county_name=Atlantic
+          - name: htl
+            dockerfile: Dockerfile.lambda.htl
+            smoke_path: /api/v1/htl/calc?sludge=150
+          - name: combustion
+            dockerfile: Dockerfile.lambda.combustion
+            smoke_path: /api/v1/combustion/calc?mass=1000&waste_type=sludge
+          - name: fermentation
+            dockerfile: Dockerfile.lambda.fermentation
+            smoke_path: /api/v1/fermentation/calc?mass=100
     steps:
       - name: Check out the repo
         uses: actions/checkout@v7
 
-      - name: Build Lambda image
-        run: docker build -f Dockerfile.lambda -t "$IMAGE_TAG" .
+      - name: Build ${{ matrix.name }} image
+        run: docker build -f "${{ matrix.dockerfile }}" -t "nj-bioenergy-api:${{ matrix.name }}-smoketest" .
 
-      - name: Smoke test - plain app boot check
+      - name: Smoke test ${{ matrix.name }} - health + one real request
         run: |
-          docker run -d --rm -p 5000:5000 --name lambda-smoketest-app "$IMAGE_TAG"
+          docker run -d --rm -p 5000:5000 --name "${{ matrix.name }}-smoketest-app" "nj-bioenergy-api:${{ matrix.name }}-smoketest"
 
           echo "Waiting for /health to respond..."
           healthy=""
@@ -58,20 +69,20 @@ jobs:
           done
           if [ -z "$healthy" ]; then
             echo "App never became healthy within 600s"
-            docker logs lambda-smoketest-app
+            docker logs "${{ matrix.name }}-smoketest-app"
             exit 1
           fi
 
-          echo "Checking a real HTL calculation..."
-          http_code=$(curl -s -o /tmp/htl_response.json -w "%{http_code}" "http://localhost:5000/api/v1/htl/calc?sludge=150")
-          cat /tmp/htl_response.json
+          echo "Checking ${{ matrix.smoke_path }}..."
+          http_code=$(curl -s -o /tmp/response.json -w "%{http_code}" "http://localhost:5000${{ matrix.smoke_path }}")
+          cat /tmp/response.json
           if [ "$http_code" != "200" ]; then
-            echo "HTL calc endpoint returned $http_code"
-            docker logs lambda-smoketest-app
+            echo "${{ matrix.smoke_path }} returned $http_code"
+            docker logs "${{ matrix.name }}-smoketest-app"
             exit 1
           fi
 
-          docker stop lambda-smoketest-app
+          docker stop "${{ matrix.name }}-smoketest-app"
 
       - name: Configure AWS credentials (OIDC, no stored keys)
         uses: aws-actions/configure-aws-credentials@v6
@@ -83,13 +94,13 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Tag and push Lambda image
+      - name: Tag and push ${{ matrix.name }} image
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
         run: |
           IMAGE="$REGISTRY/$ECR_REPOSITORY"
-          docker tag "$IMAGE_TAG" "$IMAGE:lambda-${{ github.sha }}"
-          docker tag "$IMAGE_TAG" "$IMAGE:lambda-latest"
-          docker push "$IMAGE:lambda-${{ github.sha }}"
-          docker push "$IMAGE:lambda-latest"
-          echo "Pushed $IMAGE:lambda-latest and :lambda-${{ github.sha }}"
+          docker tag "nj-bioenergy-api:${{ matrix.name }}-smoketest" "$IMAGE:${{ matrix.name }}-${{ github.sha }}"
+          docker tag "nj-bioenergy-api:${{ matrix.name }}-smoketest" "$IMAGE:${{ matrix.name }}-latest"
+          docker push "$IMAGE:${{ matrix.name }}-${{ github.sha }}"
+          docker push "$IMAGE:${{ matrix.name }}-latest"
+          echo "Pushed $IMAGE:${{ matrix.name }}-latest and :${{ matrix.name }}-${{ github.sha }}"
