@@ -13,9 +13,13 @@ Available routers:
 - fermentation_calc: Fermentation calculation endpoints
 - fermentation_lookup: Fermentation county lookup endpoints
 - health: Health monitoring and metrics endpoints
+
+Deliberately no eager `from . import ...` here: each of the four Lambda
+entrypoints (app/entrypoints/*.py) imports only the specific router
+module(s) it needs. Since `from app.routers import X` still runs this
+__init__.py first regardless of what X is, an eager blanket import here
+would force every entrypoint to import all six routers' underlying heavy
+service modules (exposan/biosteam/biorefineries together), defeating the
+whole point of splitting them into separately-deployable functions with
+non-overlapping dependency footprints.
 """
-
-# Import routers for easy access
-from . import htl_calc, htl_lookup, combustion_calc, combustion_lookup, fermentation_calc, fermentation_lookup, health
-
-__all__ = ["htl_calc", "htl_lookup", "combustion_calc", "combustion_lookup", "fermentation_calc", "fermentation_lookup", "health"]
