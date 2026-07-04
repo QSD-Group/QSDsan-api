@@ -1,0 +1,49 @@
+# Lambda container image for the htl-calc function: /htl/calc only.
+# Imports exposan.htl + chaospy.
+
+FROM python:3.10-slim AS builder
+
+RUN apt-get update && apt-get install -y gcc g++ gfortran git
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+WORKDIR /app
+
+COPY pyproject.toml uv.lock ./
+
+RUN uv sync --frozen --no-cache
+
+FROM python:3.10-slim AS runtime
+
+RUN apt-get update && apt-get install -y libopenblas0 liblapack3 && rm -rf /var/lib/apt/lists/*
+
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 /lambda-adapter /opt/extensions/lambda-adapter
+ENV AWS_LWA_PORT=5000
+ENV AWS_LWA_READINESS_CHECK_PATH=/health
+
+ENV HOME=/tmp
+ENV XDG_CACHE_HOME=/tmp/.cache
+ENV MPLCONFIGDIR=/tmp/matplotlib
+ENV NUMBA_CACHE_DIR=/tmp/numba_cache
+
+COPY --from=builder /app/.venv /app/.venv
+
+# exposan.htl creates its own "results" output directory at import time
+# (exposan/utils.py:_init_modules, called from exposan/htl/__init__.py),
+# unconditionally. "data" ships with the package so that half of the check
+# passes; "results" does not, so the bare os.mkdir() call crashes Lambda's
+# read-only filesystem before the app can even start. Pre-create it here,
+# in the writable build stage, so the runtime's os.path.isdir() check finds
+# it already there and skips the mkdir. (A small upstream EXPOsan PR to
+# wrap that os.mkdir() in a try/except is tracked separately — see
+# guides/lambda-restructure-design.md — but isn't required for this to work.)
+RUN mkdir -p /app/.venv/lib/python3.10/site-packages/exposan/htl/results
+
+WORKDIR /app
+
+COPY . .
+
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH="/app"
+
+CMD ["uvicorn", "app.entrypoints.htl_app:app", "--host", "0.0.0.0", "--port", "5000"]
