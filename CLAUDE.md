@@ -49,29 +49,31 @@ uv run black .                       # Format
 uv run mypy app/                     # Type check
 ```
 
-## Architecture: Dual-App Migration State
+## Architecture: Split Light/Heavy Services, Four Lambda Entrypoints
 
-The codebase has **two parallel app structures** during the Flask → FastAPI migration:
+FastAPI is the only app (the Flask legacy app described in earlier
+versions of this file — `wsgi.py`, `app/blueprints/` — has been removed).
 
-### FastAPI (new — `app/main.py`)
-Entry point for production. Uses:
-- `app/routers/` — FastAPI `APIRouter` handlers (htl, combustion, fermentation, health, v2_example)
-- `app/models/` — Pydantic request/response models for each processing type
-- `app/middleware/` — Error handling, performance monitoring, rate limiting, security headers
+Each service is split into a light lookup module (pandas/CSV only) and a
+heavy calc module (the scientific stack):
 
-### Flask (legacy — `wsgi.py` → `app/__init__.py`)
-Still functional fallback. Uses:
-- `app/blueprints/` — Flask Blueprint route handlers
-- `app/blueprints/trial.py` — Temporary test blueprint (marked for removal)
+- `app/services/{htl,combustion,fermentation}/lookup.py` — county lookups
+  and unit conversion.
+- `app/services/{htl,combustion,fermentation}/calc.py` — the actual
+  process simulation. Model/biorefinery objects are cached per warm
+  container behind a lock.
+- `app/services/combustion/_chemicals.py` — combustion's chemical
+  definitions, built directly with thermosteam instead of importing
+  exposan/biorefineries (see `guides/lambda-restructure-design.md`).
 
-### Shared Service Layer (`app/services/`)
-Both Flask blueprints and FastAPI routers call the **same service functions**. Services contain all business logic and scientific calculations:
-- `htl_service.py` — Working. Uses `exposan.htl.create_model` for HTL calculations, `chaospy` for distributions.
-- `combustion_service.py` — Needs fixing (broken endpoints).
-- `fermentation_service.py` — Needs fixing (broken endpoints).
-
-### Data Layer (`app/data/`)
-CSV files per processing type (e.g., `htl/htl_data.csv`, `fermentation/fermentation_data.csv`). Services load these at module import time using `os.path` relative to the service file's `__file__`.
+Routers follow the same split (`app/routers/htl_lookup.py` +
+`app/routers/htl_calc.py`, etc.). `app/main.py` registers all six routers
+for local development (`uv run uvicorn app.main:app`). Production runs as
+four separate Lambda functions instead, each with its own minimal FastAPI
+app in `app/entrypoints/` and its own Dockerfile
+(`Dockerfile.lambda.{light,htl,combustion,fermentation}`) — see
+`guides/lambda-restructure-design.md` for the full architecture and
+`guides/lambda-restructure-plan.md` for how it was built.
 
 ## API Structure
 
