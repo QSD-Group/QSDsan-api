@@ -55,11 +55,23 @@ jobs:
 
       - name: Smoke test ${{ matrix.name }} - health + one real request
         run: |
-          docker run -d --rm -p 5000:5000 --name "${{ matrix.name }}-smoketest-app" "nj-bioenergy-api:${{ matrix.name }}-smoketest"
+          # Deliberately no --rm here: if the container crashes or exits, we
+          # need `docker logs` to still work afterward to see why. Cleaned
+          # up explicitly at the end of this step instead.
+          docker run -d -p 5000:5000 --name "${{ matrix.name }}-smoketest-app" "nj-bioenergy-api:${{ matrix.name }}-smoketest"
 
           echo "Waiting for /health to respond..."
           healthy=""
           for i in $(seq 1 60); do
+            state=$(docker inspect -f '{{.State.Running}}' "${{ matrix.name }}-smoketest-app" 2>/dev/null || echo "gone")
+            if [ "$state" != "true" ]; then
+              echo "Container is not running (state: $state) after $((i * 10))s - it exited/crashed."
+              echo "--- docker inspect ---"
+              docker inspect --format='{{json .State}}' "${{ matrix.name }}-smoketest-app" || true
+              echo "--- docker logs ---"
+              docker logs "${{ matrix.name }}-smoketest-app" || true
+              exit 1
+            fi
             if curl -sf http://localhost:5000/health > /dev/null; then
               healthy="1"
               echo "Healthy after $((i * 10))s"
@@ -68,8 +80,9 @@ jobs:
             sleep 10
           done
           if [ -z "$healthy" ]; then
-            echo "App never became healthy within 600s"
-            docker logs "${{ matrix.name }}-smoketest-app"
+            echo "App never became healthy within 600s (container still running, but not responding)"
+            echo "--- docker logs ---"
+            docker logs "${{ matrix.name }}-smoketest-app" || true
             exit 1
           fi
 
@@ -78,11 +91,12 @@ jobs:
           cat /tmp/response.json
           if [ "$http_code" != "200" ]; then
             echo "${{ matrix.smoke_path }} returned $http_code"
-            docker logs "${{ matrix.name }}-smoketest-app"
+            docker logs "${{ matrix.name }}-smoketest-app" || true
             exit 1
           fi
 
           docker stop "${{ matrix.name }}-smoketest-app"
+          docker rm "${{ matrix.name }}-smoketest-app"
 
       - name: Configure AWS credentials (OIDC, no stored keys)
         uses: aws-actions/configure-aws-credentials@v6
