@@ -8,9 +8,12 @@ name: Build, smoke-test, and push Lambda images to ECR
 # like build-and-push-ecr.yml.
 #
 # Runs on GitHub's hosted runner (which already has Docker) instead of
-# requiring a local Docker install, and smoke-tests each image (health
-# check + one real request against that function's own heavy endpoint,
-# where it has one) before ever pushing to ECR.
+# requiring a local Docker install, and smoke-tests each image (polls that
+# function's own real endpoint until it returns 200) before ever pushing
+# to ECR. Only light_app registers /health (see app/entrypoints/*.py) -
+# htl/combustion/fermentation each only register their own calc router -
+# so the readiness check polls each matrix entry's own smoke_path rather
+# than a shared /health path.
 #
 # This does NOT validate the AWS Lambda Web Adapter's extension-proxy
 # behavior: the standalone Lambda Runtime Interface Emulator does not
@@ -53,15 +56,19 @@ jobs:
       - name: Build ${{ matrix.name }} image
         run: docker build -f "${{ matrix.dockerfile }}" -t "nj-bioenergy-api:${{ matrix.name }}-smoketest" .
 
-      - name: Smoke test ${{ matrix.name }} - health + one real request
+      - name: Smoke test ${{ matrix.name }} - poll its own endpoint until ready
         run: |
           # Deliberately no --rm here: if the container crashes or exits, we
           # need `docker logs` to still work afterward to see why. Cleaned
           # up explicitly at the end of this step instead.
           docker run -d -p 5000:5000 --name "${{ matrix.name }}-smoketest-app" "nj-bioenergy-api:${{ matrix.name }}-smoketest"
 
-          echo "Waiting for /health to respond..."
-          healthy=""
+          # Poll the matrix entry's own real endpoint directly - not /health,
+          # which only light_app registers. This doubles as both the
+          # readiness check and the correctness check.
+          echo "Waiting for ${{ matrix.smoke_path }} to return 200..."
+          ready=""
+          http_code="000"
           for i in $(seq 1 60); do
             state=$(docker inspect -f '{{.State.Running}}' "${{ matrix.name }}-smoketest-app" 2>/dev/null || echo "gone")
             if [ "$state" != "true" ]; then
@@ -72,28 +79,24 @@ jobs:
               docker logs "${{ matrix.name }}-smoketest-app" || true
               exit 1
             fi
-            if curl -sf http://localhost:5000/health > /dev/null; then
-              healthy="1"
-              echo "Healthy after $((i * 10))s"
+            http_code=$(curl -s -o /tmp/response.json -w "%{http_code}" "http://localhost:5000${{ matrix.smoke_path }}" || echo "000")
+            if [ "$http_code" = "200" ]; then
+              ready="1"
+              echo "Ready after $((i * 10))s"
               break
             fi
             sleep 10
           done
-          if [ -z "$healthy" ]; then
-            echo "App never became healthy within 600s (container still running, but not responding)"
+          if [ -z "$ready" ]; then
+            echo "${{ matrix.smoke_path }} never returned 200 within 600s (last HTTP code: $http_code)"
+            cat /tmp/response.json || true
             echo "--- docker logs ---"
             docker logs "${{ matrix.name }}-smoketest-app" || true
             exit 1
           fi
 
-          echo "Checking ${{ matrix.smoke_path }}..."
-          http_code=$(curl -s -o /tmp/response.json -w "%{http_code}" "http://localhost:5000${{ matrix.smoke_path }}")
+          echo "Response body:"
           cat /tmp/response.json
-          if [ "$http_code" != "200" ]; then
-            echo "${{ matrix.smoke_path }} returned $http_code"
-            docker logs "${{ matrix.name }}-smoketest-app" || true
-            exit 1
-          fi
 
           docker stop "${{ matrix.name }}-smoketest-app"
           docker rm "${{ matrix.name }}-smoketest-app"
