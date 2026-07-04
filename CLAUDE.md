@@ -24,11 +24,6 @@ uv run <command>                 # Run any command in the managed environment
 uv run uvicorn app.main:app --reload --port 5000
 ```
 
-**Flask (legacy, still functional):**
-```bash
-uv run python wsgi.py
-```
-
 **Docker:**
 ```bash
 docker build -t waste-energy-api .
