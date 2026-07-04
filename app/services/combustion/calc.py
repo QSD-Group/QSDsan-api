@@ -2,10 +2,25 @@
 Combustion electricity-generation calculation.
 
 Heavy: imports biosteam/thermosteam only (no exposan, no biorefineries —
-see _chemicals.py). The chemicals + thermo settings are built once per
-warm container behind a lock, since biosteam's global bst.settings/
-flowsheet state isn't concurrency-safe and FastAPI's thread pool can run
-handlers concurrently.
+see _chemicals.py). The bst.Chemicals object itself is built once per warm
+container behind a lock (constructing ~14 thermosteam.Chemical objects with
+property models is real work worth caching), since biosteam's global
+bst.settings/flowsheet state isn't concurrency-safe and FastAPI's thread
+pool can run handlers concurrently.
+
+However, bst.settings.set_thermo(...) is re-asserted on *every* call to
+combustion_calc_raw, not just the first. In app.main, all three heavy calc
+routers (HTL, combustion, fermentation) share one warm process, and both
+htl.calc._get_model() and fermentation.calc._get_biorefinery() replace
+biosteam's global thermo with their own chemical sets. If combustion only
+set the thermo once (the first time it ran), a later call to /htl/calc or
+/fermentation/calc in the same process would silently swap out the active
+thermo, and the next /combustion/calc call would build its Stream against
+the wrong chemical set (crashing, since HTL/fermentation's thermo doesn't
+recognize combustion's exact chemical set — see the regression test in
+tests/test_combustion.py). Re-setting the (cheap, already-built) Chemicals
+object as the active thermo on every call avoids this while still avoiding
+the expensive rebuild.
 """
 
 import threading
@@ -18,7 +33,7 @@ from app.services.combustion.lookup import COMPOSITIONS
 
 warnings.filterwarnings("ignore")
 
-_chemicals_ready = False
+_chemicals = None
 _chemicals_lock = threading.Lock()
 
 
@@ -42,15 +57,20 @@ class BoilerTurbogenerator(bst.facilities.BoilerTurbogenerator):
             self.electricity_demand = 0
 
 
-def _ensure_chemicals():
-    """Set the process-wide thermo basis once per warm container."""
-    global _chemicals_ready
-    if _chemicals_ready:
-        return
+def _get_chemicals():
+    """Build (once per warm container) or return the cached bst.Chemicals object.
+
+    Building is cached; setting it as the active global thermo is not — see
+    the module docstring for why combustion_calc_raw must re-assert
+    bst.settings.set_thermo(...) on every call.
+    """
+    global _chemicals
+    if _chemicals is not None:
+        return _chemicals
     with _chemicals_lock:
-        if not _chemicals_ready:
-            create_chemicals()
-            _chemicals_ready = True
+        if _chemicals is None:
+            _chemicals = create_chemicals()
+        return _chemicals
 
 
 def combustion_calc_raw(mass_in_kg_hr, composition=[0.7, 0.257, 0.204, 0.463], nj_avg_power_co2=486.63, dry_mass_in_kg_hr=None):
@@ -96,7 +116,7 @@ def combustion_calc_raw(mass_in_kg_hr, composition=[0.7, 0.257, 0.204, 0.463], n
         raise ValueError("composition must have 4 elements")
 
     a, b, c, d = composition
-    _ensure_chemicals()
+    bst.settings.set_thermo(_get_chemicals())
 
     moisture = a * mass_in_kg_hr
 

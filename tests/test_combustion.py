@@ -12,6 +12,71 @@ from unittest.mock import patch
 _CALC_RESULT = ("sludge", 100.0, 1677161.41, 0.370, 0.00379)
 _COUNTY_RESULT = ("Essex", "sludge", 1234.56, 1677161.41, 0.370, 0.00379)
 
+# Recorded reference output for combustion_calc(1000.0, 'sludge') against a
+# correctly-set combustion thermo (see TestCombustionThermoRegression below).
+_REFERENCE_RESULT = (
+    "sludge", 1000.0, 16771611.411033249, 3.7020225242133353, 0.037930558649726796,
+)
+
+
+# ---------------------------------------------------------------------------
+# Regression test: combustion must re-assert its own thermo on every call
+# ---------------------------------------------------------------------------
+
+class TestCombustionThermoRegression:
+    """Regression test for the shared-process thermo-clobbering bug.
+
+    app.main registers HTL, combustion, and fermentation calc routers in one
+    warm process. htl.calc._get_model() and fermentation.calc.
+    _get_biorefinery() both replace biosteam's global bst.settings.thermo
+    with their own chemical sets. combustion.calc used to only call
+    bst.settings.set_thermo(...) the first time combustion_calc_raw ever ran
+    (caching a "_chemicals_ready" flag) -- so if another service's thermo
+    became active afterward, the next combustion call would build its
+    bst.Stream against the wrong chemicals and crash (or, if the other
+    thermo happened to share chemical names, silently produce wrong
+    numbers). The fix re-asserts bst.settings.set_thermo(cached_chemicals)
+    on every call to combustion_calc_raw, not just the first.
+
+    This test simulates "something else changed the global thermo" directly
+    (cheaper and more deterministic than actually running htl_calc/
+    fermentation_calc) and confirms combustion_calc still succeeds and still
+    matches the recorded reference output.
+    """
+
+    def test_combustion_survives_foreign_thermo_set_before_it(self):
+        import biosteam as bst
+        import thermosteam as tmo
+        from app.services.combustion.calc import combustion_calc
+
+        # Simulate a different service (HTL/fermentation) having replaced
+        # the global thermo with an unrelated chemical set since combustion
+        # last ran.
+        foreign_chemicals = tmo.Chemicals(['Water', 'Ethanol'])
+        bst.settings.set_thermo(foreign_chemicals)
+
+        result = combustion_calc(1000.0, 'sludge')
+
+        assert result[0] == _REFERENCE_RESULT[0]
+        assert result[1] == pytest.approx(_REFERENCE_RESULT[1])
+        assert result[2] == pytest.approx(_REFERENCE_RESULT[2])
+        assert result[3] == pytest.approx(_REFERENCE_RESULT[3])
+        assert result[4] == pytest.approx(_REFERENCE_RESULT[4])
+
+    def test_combustion_survives_foreign_thermo_set_between_two_calls(self):
+        import biosteam as bst
+        import thermosteam as tmo
+        from app.services.combustion.calc import combustion_calc
+
+        first = combustion_calc(1000.0, 'sludge')
+
+        foreign_chemicals = tmo.Chemicals(['Water', 'Ethanol'])
+        bst.settings.set_thermo(foreign_chemicals)
+
+        second = combustion_calc(1000.0, 'sludge')
+
+        assert first == second
+
 
 # ---------------------------------------------------------------------------
 # Service unit tests
