@@ -99,10 +99,3 @@ Split across the base install and an optional `heavy` group (see
 - `qsdsan` and the rest of the scientific stack (`numba`, `scipy`,
   `chemicals`, etc.) are transitive dependencies resolved and locked
   automatically by `uv lock` — not listed directly in `pyproject.toml`.
-
-## Known follow-ups
-
-- Task 14 (AWS, human-executed): after a CloudWatch burn-in watch on all
-  four Lambda functions, delete the leftover single-function Lambda and
-  ECR images from an earlier, abandoned migration attempt (`lambda-*`
-  tags in the shared ECR repo). Not yet done.
