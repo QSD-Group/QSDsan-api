@@ -6,15 +6,26 @@
 > [`nj-bioenergy-app`](https://github.com/QSD-Group/nj-bioenergy-app) calls. Live at
 > https://nj-bioenergy-api.apps.qsdsan.com.
 
-This repository contains the backend for a Waste-to-Energy processing application. The backend is built using Flask and provides multiple API endpoints for different waste processing methods such as **Fermentation**, **HTL (Hydrothermal Liquefaction)**, **Combustion**, and **Anaerobic Digestion**.
+This repository contains the backend for a Waste-to-Energy processing application, covering
+**HTL (Hydrothermal Liquefaction)**, **Combustion**, and **Fermentation**. It is a FastAPI app;
+the earlier Flask implementation has been fully removed.
 
 ## Deployment (production)
 
-Live at **https://nj-bioenergy-api.apps.qsdsan.com**, hosted on **Amazon ECS Express Mode** in the QSD-Group `qsdsan-app` AWS account (region `us-east-2`). The container image is built and pushed to ECR by the GitHub Actions workflow `.github/workflows/build-and-push-ecr.yml` (GitHub OIDC → IAM role `github-actions-ecr-push`; no stored keys). Express Mode runs that image behind an auto-provisioned Application Load Balancer (ALB).
+Runs as **four separate AWS Lambda functions** (`nj-bioenergy-light`, `-htl`, `-combustion`,
+`-fermentation`) in the QSD-Group `qsdsan-app` AWS account (region `us-east-2`), each behind its
+own Lambda Function URL. An existing **CloudFront distribution** (`d3t3sqyyjalry1.cloudfront.net`)
+sits in front of all four, routing by path pattern to the matching origin. DNS is a CNAME
+`nj-bioenergy-api.apps` → the CloudFront domain, in the `qsdsan.com` zone (Porkbun). This replaced
+Amazon ECS Express Mode (decommissioned 2026-07-03).
 
-**Custom domain wiring:** a **CloudFront distribution** (`d3t3sqyyjalry1.cloudfront.net`) sits in front of the ECS Express `.on.aws` endpoint. DNS is a **CNAME `nj-bioenergy-api.apps` → `d3t3sqyyjalry1.cloudfront.net`** in the `qsdsan.com` zone (Porkbun). CloudFront uses an ACM cert (us-east-1) for the alternate domain and forwards all requests to the `.on.aws` origin with cache policy `CachingDisabled` and origin request policy `AllViewerExceptHostHeader`. Note the domain is a **sibling** of the frontend (`nj-bioenergy-api.apps.qsdsan.com`), not nested under it — a name *under* `nj-bioenergy.apps.qsdsan.com` can't resolve because that name is a CNAME.
+Images are built, smoke-tested, and pushed to the shared ECR repo `nj-bioenergy-api` (tags
+`light-*`, `htl-*`, `combustion-*`, `fermentation-*`) by
+`.github/workflows/build-and-push-lambda.yml` via GitHub OIDC → IAM role
+`github-actions-ecr-push` (no stored keys).
 
-The CloudFront layer eliminates the previous ALB target-group rotation fragility — the `.on.aws` origin is always healthy regardless of Express blue/green deploys. Do **not** delete the ALB; it is the CloudFront origin.
+See `CLAUDE.md` for the full architecture and
+`deployments/qsdsan.md` (separate repo) for the account/DNS/CI inventory.
 
 ## Table of Contents
 - [Project Structure](#project-structure)
@@ -31,129 +42,114 @@ The CloudFront layer eliminates the previous ALB target-group rotation fragility
 ## Project Structure
 
 ```
-/api-backend
-│
-├── /app
-│   ├── /blueprints               # Contains Blueprints for each functional module
-│   │   ├── fermentation.py        # Fermentation-related API routes
-│   │   ├── htl.py                 # HTL-related API routes
-│   │   ├── combustion.py          # Combustion-related API routes
-│   │   └── digestion.py           # Digestion-related API routes
-│   ├── /services                 # Business logic and data processing scripts
-│   │   ├── fermentation_service.py
-│   │   ├── htl_service.py
-│   │   ├── combustion_service.py
-│   │   └── digestion_service.py
-│   ├── /data                     # Data files (CSV, Excel, etc.)
-│   │   └── sludge_data_dmt.csv    # Sludge data for HTL functions   
-│   ├── __init__.py               # App factory and Blueprint registration
-│   └── config.py                 # Configuration for environment variables
-│
-├── Dockerfile                    # Dockerfile for containerizing the API
-├── requirements.txt              # Python dependencies
-├── .env                          # Environment variables for local development
-└── wsgi.py                       # Entry point for WSGI server
+nj-bioenergy-api/
+├── app/
+│   ├── main.py                 # Local-dev FastAPI entrypoint (registers all six routers)
+│   ├── config.py
+│   ├── app_factory.py
+│   ├── entrypoints/             # One slim FastAPI app per Lambda function
+│   │   ├── light_app.py         # health + 3 lookup routers
+│   │   ├── htl_app.py           # htl_calc router only
+│   │   ├── combustion_app.py    # combustion_calc router only
+│   │   └── fermentation_app.py  # fermentation_calc router only
+│   ├── routers/                 # Each service split into lookup + calc routers
+│   │   ├── health.py
+│   │   ├── htl_lookup.py / htl_calc.py
+│   │   ├── combustion_lookup.py / combustion_calc.py
+│   │   └── fermentation_lookup.py / fermentation_calc.py
+│   ├── services/                # Business logic, split light lookup / heavy calc per package
+│   │   ├── htl/{lookup.py, calc.py}
+│   │   ├── combustion/{lookup.py, calc.py, _chemicals.py}
+│   │   └── fermentation/{lookup.py, calc.py}
+│   ├── models/                   # Pydantic request/response models
+│   ├── middleware/                # Security headers, rate limiting, error handling, timing
+│   └── data/                      # Pre-computed CSVs for county lookups
+├── Dockerfile                    # Local-dev / non-Lambda image
+├── Dockerfile.lambda.{light,htl,combustion,fermentation}  # One per Lambda function
+├── pyproject.toml / uv.lock      # Dependency management (uv)
+└── guides/                       # Design docs and implementation plans
 ```
 
 ### Key Components:
-- **Blueprints**: Separate each API route into its module (e.g., fermentation, HTL, combustion, digestion).
-- **Services**: Contains the business logic and data handling for each processing method.
-- **Data**: Stores relevant CSV and other data files used in processing the requests.
-- **Configuration**: Manages environment-specific settings through `config.py` and environment variables.
+- **Entrypoints**: Four minimal FastAPI apps, each composing only the routers (and therefore only
+  the dependencies) its Lambda function needs.
+- **Routers/Services**: Each processing type is split into a light lookup module (pandas/CSV only)
+  and a heavy calc module (the scientific stack), so the light Lambda function never imports
+  `biosteam`/`exposan`/`biorefineries`.
+- **Middleware**: Security headers, in-process rate limiting, request timing, and centralized error
+  handling.
+- **Data**: Pre-computed CSVs (generated by `scripts/precompute_htl.py`, etc.) back the `/county`
+  endpoints so they don't run a live simulation per request.
 
 ---
 
 ## Installation
 
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/your-username/api-backend.git
-   cd api-backend
-   ```
+This project uses **uv**, not pip. See `guides/uv_guide.md` for the full reference.
 
-2. **Create and Activate a Virtual Environment**:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate   # On macOS/Linux
-   venv\Scripts\activate      # On Windows
-   ```
-
-3. **Install the Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Set Up Environment Variables**:
-   Create a `.env` file in the root directory and add your environment variables (e.g., `FLASK_ENV`, `SECRET_KEY`). You can use the `.env.example` as a template:
-   ```bash
-   FLASK_ENV=development
-   SECRET_KEY=your-secret-key
-   ```
+```bash
+git clone https://github.com/QSD-Group/nj-bioenergy-api.git
+cd nj-bioenergy-api
+uv sync
+```
 
 ---
 
 ## Running the Application
 
-1. **Run the Flask App Locally**:
-   ```bash
-   flask run
-   ```
+```bash
+uv run uvicorn app.main:app --reload --port 5000
+```
 
-   The app will be running on `http://127.0.0.1:5000/`.
-
-2. **WSGI Server**:
-   For production environments, use a WSGI server (e.g., Gunicorn) to run the app via `wsgi.py`.
-
-   Example:
-   ```bash
-   gunicorn --bind 0.0.0.0:5000 wsgi:app
-   ```
+The app will be running on `http://127.0.0.1:5000/`. `app/main.py` registers all six routers for
+local development; production instead runs the four `app/entrypoints/*.py` apps as separate Lambda
+functions.
 
 ---
 
 ## API Endpoints
 
+All endpoints are under `/api/v1/`. Each processing type has two patterns:
+
 ### 1. HTL (Hydrothermal Liquefaction)
-- **GET** `/api/v1/htl/county/<countyname>`: Fetch HTL data for a given county.
-- **GET** `/api/v1/htl/sludge?sludge=<value>&unit=<unit>`: Calculate diesel price and global warming potential based on sludge mass.
+- **GET** `/htl/county?county_name=<name>`: NJ county lookup (pre-computed).
+- **GET** `/htl/calc?sludge=<value>&unit=<unit>`: Live simulation from a sludge mass.
 
-### 2. Fermentation
-- **GET** `/api/v1/fermentation/county/<countyname>`: Fetch fermentation data for a given county.
-- **GET** `/api/v1/fermentation/biomass?mass=<value>`: Calculate ethanol production based on biomass mass.
+### 2. Combustion
+- **GET** `/combustion/county?county_name=<name>`: NJ county lookup (pre-computed).
+- **GET** `/combustion/calc?mass=<value>&waste_type=<type>`: Live simulation from a feedstock mass.
 
-### 3. Combustion
-- **GET** `/api/v1/combustion/county/<countyname>`: Fetch combustion data for a given county.
-- **GET** `/api/v1/combustion/mass?mass=<value>`: Calculate electricity and emissions from feedstock.
+### 3. Fermentation
+- **GET** `/fermentation/county?county_name=<name>`: NJ county lookup (pre-computed).
+- **GET** `/fermentation/calc?mass=<value>`: Live simulation from a biomass mass.
 
-### 4. Anaerobic Digestion
-- **GET** `/api/v1/digestion/county/<countyname>`: Fetch anaerobic digestion data for a given county.
-- **GET** `/api/v1/digestion/mass?mass=<value>`: Calculate biogas production based on feedstock mass.
+### Health/ops (light function only)
+- **GET** `/health`, `/ready`, `/metrics`, `/performance`
+
+Full request/response schemas are auto-generated at `/docs` (Swagger) and `/redoc` when the app is
+running.
 
 ---
 
 ## Environment Variables
 
-- **FLASK_ENV**: Environment the app is running in (`development`, `testing`, `production`).
-- **SECRET_KEY**: Secret key for Flask app.
-- **DATABASE_URL**: If you add a database, configure the URL here.
-
-You can add more environment-specific variables in your `.env` file.
+- **`ALLOWED_ORIGINS`**: comma-separated CORS allowlist, read in `app/app_factory.py`. Defaults to
+  the group frontend origin (`nj-bioenergy.apps.qsdsan.com`) plus localhost.
 
 ---
 
 ## Docker Usage
 
-1. **Build the Docker Image**:
-   ```bash
-   docker build -t api-backend .
-   ```
+**Local/non-Lambda image:**
+```bash
+docker build -t waste-energy-api .
+docker run -p 5000:5000 waste-energy-api
+```
 
-2. **Run the Container**:
-   ```bash
-   docker run -p 5000:5000 api-backend
-   ```
-
-   This will run the app inside a Docker container and expose it on port 5000.
+**Lambda images** (one per function, built and smoke-tested in CI, not typically run locally):
+```bash
+docker build -f Dockerfile.lambda.htl -t nj-bioenergy-api:htl .
+```
 
 ---
 
@@ -172,9 +168,3 @@ If you want to contribute to this project:
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-### Notes
-- The app is configured to handle multiple routes and dynamically process data based on requests.
-- Always ensure that the environment variables are set correctly, especially for production environments.

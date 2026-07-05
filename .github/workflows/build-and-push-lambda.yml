@@ -1,11 +1,8 @@
 name: Build, smoke-test, and push Lambda images to ECR
 
-# Manual-dispatch only, on purpose: the four Lambda functions don't exist
-# yet (created by hand per guides/lambda-restructure-plan.md's AWS
-# runbook tasks), and this shouldn't run automatically on every push to
-# main until the Lambda path has been cut over to in production. Once
-# that's done, this can be folded into the normal push-triggered pipeline
-# like build-and-push-ecr.yml.
+# Manual-dispatch only: builds/smoke-tests/pushes all four Lambda function
+# images (light/htl/combustion/fermentation) on demand. See CLAUDE.md for
+# the four-function architecture.
 #
 # Runs on GitHub's hosted runner (which already has Docker) instead of
 # requiring a local Docker install, and smoke-tests each image (polls that

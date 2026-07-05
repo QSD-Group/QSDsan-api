@@ -34,10 +34,10 @@ pip freeze > requirements.txt
 ### ✅ New Way (UV)
 ```bash
 # No virtual environment needed! UV handles it automatically
-uv sync                     # Install dependencies from pyproject.toml
-uv add flask fastapi       # Add new packages
-uv run python wsgi.py      # Run application
-uv pip list                # List installed packages
+uv sync                                       # Install dependencies from pyproject.toml
+uv add fastapi                                # Add new packages
+uv run uvicorn app.main:app --reload --port 5000  # Run application
+uv pip list                                   # List installed packages
 ```
 
 ## 📦 Do I Need venv or pip Anymore?
@@ -106,25 +106,16 @@ uv add "fastapi>=0.105.0"
 
 ### 🏃‍♂️ Running Applications
 
-#### Flask App (Current)
+#### FastAPI App (current; the earlier Flask app has been removed)
 ```bash
-# Run the Flask application
-uv run python wsgi.py
-
-# Run with environment variables
-uv run --env-file .env python wsgi.py
-
-# Run Flask development server
-uv run flask run --debug
-```
-
-#### FastAPI App (Future)
-```bash
-# Run FastAPI with uvicorn
+# Run with uvicorn
 uv run uvicorn app.main:app --reload
 
 # Run on specific port
 uv run uvicorn app.main:app --port 8000 --reload
+
+# Run with environment variables
+uv run --env-file .env uvicorn app.main:app --reload
 ```
 
 #### Scripts and Tools
@@ -162,7 +153,7 @@ uv pip list --outdated
 Our project uses this modern structure:
 
 ```
-Research50/
+nj-bioenergy-api/
 ├── pyproject.toml          # Project configuration (replaces requirements.txt)
 ├── uv.lock                 # Locked dependencies (auto-generated)
 ├── app/                    # Application code
@@ -187,14 +178,14 @@ Research50/
 ### 🆕 Starting Development
 ```bash
 # Clone the repo
-git clone <repository>
-cd Research50
+git clone https://github.com/QSD-Group/nj-bioenergy-api.git
+cd nj-bioenergy-api
 
 # Install all dependencies (creates virtual environment automatically)
 uv sync
 
 # Start coding! No activation needed
-uv run python wsgi.py
+uv run uvicorn app.main:app --reload --port 5000
 ```
 
 ### 🔄 Daily Development
@@ -209,7 +200,7 @@ uv sync
 uv add requests
 
 # Run your application
-uv run python wsgi.py
+uv run uvicorn app.main:app --reload --port 5000
 
 # Run tests
 uv run pytest
