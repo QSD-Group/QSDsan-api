@@ -104,6 +104,13 @@ def htl_calc(kg_hr, mmbtu_to_gal=0.12845, kg_to_lb=2.20462):
     plant_size = model.parameters[-1]
     plant_size.baseline = kg_hr
 
+    # The HTL system's H2SO4/H2 ReversedSplitter units (S200, S300) execute
+    # before the reagent-demand units they're supposed to reflect (AcidEx,
+    # MemDis, HT/HC), so a single simulate() reports last call's reagent
+    # demand, not this call's -- one full pass behind. A priming pass
+    # flushes the lag; verified stable and history-independent across
+    # varying kg_hr, so no third pass is needed.
+    model.metrics_at_baseline()
     df = model.metrics_at_baseline()
 
     MSDP, GWP = [m for m in model.metrics if m.name in ('MDSP', 'GWP diesel')]

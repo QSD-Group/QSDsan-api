@@ -31,13 +31,27 @@ _br_lock = threading.Lock()
 
 
 def _get_biorefinery():
-    """Build (once per warm container) or return the cached CellulosicEthanol biorefinery."""
+    """Build (once per warm container) or return the cached CellulosicEthanol biorefinery.
+
+    biosteam's default recycle tolerance (rmol=0.01) is a per-iteration
+    relative-delta check, not a true-convergence check: a cold build takes
+    many iterations to first satisfy it (landing close to converged), but
+    resimulating an already-converged cached System satisfies it after just
+    one iteration, so each warm call only advances one contraction step
+    toward the true fixed point. This under-convergence is most visible in
+    sys.get_net_impact('GWP') and tea.solve_price, which depend on a
+    slow-converging subsystem (fermentation stillage/solids handling feeding
+    the boiler) that the product mass balance itself isn't sensitive to.
+    Tightening tolerance once here forces every simulate() call, warm or
+    cold, to reach the same tight fixed point regardless of starting point.
+    """
     global _br
     if _br is not None:
         return _br
     with _br_lock:
         if _br is None:
             _br = CellulosicEthanol(name='ethanol')
+            _br.sys.set_tolerance(mol=1e-6, rmol=1e-9, subsystems=True)
         return _br
 
 
